@@ -93,13 +93,13 @@ IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/C
 if [[ -n "$IDENTITY" ]]; then
   # Keep the designated requirement stable so TCC survives rebuilds.
   codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" \
-    --identifier "local.nn.selin.CheckpointVPNOneClick" \
+    --identifier "local.checkpointvpn.oneclick" \
     --entitlements "$ROOT/CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements" \
     "$APP"
 else
   echo "warning: no valid local codesign identity; ad-hoc sign with a stable identifier" >&2
   codesign --force --sign - \
-    --identifier "local.nn.selin.CheckpointVPNOneClick" \
+    --identifier "local.checkpointvpn.oneclick" \
     --entitlements "$ROOT/CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements" \
     "$APP"
 fi

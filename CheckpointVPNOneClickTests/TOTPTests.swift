@@ -14,14 +14,14 @@ final class TOTPTests: XCTestCase {
     }
 
     func testParseOtpauth() throws {
-        let secret = try TOTP.parseSecret("otpauth://totp/Work:nn.selin?secret=JBSWY3DPEHPK3PXP&period=30&digits=6")
+        let secret = try TOTP.parseSecret("otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP&period=30&digits=6")
         XCTAssertEqual(secret.period, 30)
         XCTAssertEqual(secret.digits, 6)
         XCTAssertEqual(secret.key.count, 10)
     }
 
     func testQRRoundTrip() throws {
-        let payload = "otpauth://totp/Work:nn.selin?secret=JBSWY3DPEHPK3PXP&period=30&digits=6"
+        let payload = "otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP&period=30&digits=6"
         guard let image = QRCodeImporter.renderForTest(payload) else {
             XCTFail("Could not render QR")
             return
@@ -39,19 +39,19 @@ final class TOTPTests: XCTestCase {
         let raw = """
         Trac connections:
 
-        Conn vpn.gpmdi.ru:
+        Conn vpn.example.com:
         \tgw: 1.2.3.4
         \tstatus: Idle
         \tactive site: false
 
-        Conn vpn.rutube-net.ru:
+        Conn vpn-backup.example.com:
         \tgw: 5.6.7.8
         \tstatus: Connected
         \tactive site: true
         """
         let snapshot = TracClient.parseInfo(raw)
         XCTAssertEqual(snapshot.sites.count, 2)
-        XCTAssertEqual(snapshot.active?.name, "vpn.rutube-net.ru")
+        XCTAssertEqual(snapshot.active?.name, "vpn-backup.example.com")
         XCTAssertEqual(snapshot.overall, .connected)
     }
 }

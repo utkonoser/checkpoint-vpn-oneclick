@@ -4,8 +4,8 @@ import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
-    @AppStorage("site") var site: String = "vpn.rutube-net.ru"
-    @AppStorage("username") var username: String = "nn.selin"
+    @AppStorage("site") var site: String = ""
+    @AppStorage("username") var username: String = ""
 
     @Published var snapshot = TracSnapshot(sites: [], active: nil)
     @Published var lastError: String?

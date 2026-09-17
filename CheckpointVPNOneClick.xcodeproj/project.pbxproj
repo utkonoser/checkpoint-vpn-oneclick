@@ -226,7 +226,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = local.nn.selin.CheckpointVPNOneClickTests;
+				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CheckpointVPNOneClick.app/Contents/MacOS/CheckpointVPNOneClick";
 			};
@@ -267,7 +267,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = local.nn.selin.CheckpointVPNOneClickTests;
+				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CheckpointVPNOneClick.app/Contents/MacOS/CheckpointVPNOneClick";
 			};

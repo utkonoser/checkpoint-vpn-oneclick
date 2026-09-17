@@ -11,14 +11,19 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("VPN") {
-                Picker("Site", selection: $model.site) {
-                    ForEach(siteChoices, id: \.self) { site in
-                        Text(site).tag(site)
-                    }
-                }
-                if !siteChoices.contains(model.site) {
+                if siteChoices.isEmpty {
                     TextField("Site", text: $model.site)
                         .textFieldStyle(.roundedBorder)
+                } else {
+                    Picker("Site", selection: $model.site) {
+                        ForEach(siteChoices, id: \.self) { site in
+                            Text(site).tag(site)
+                        }
+                    }
+                    if !siteChoices.contains(model.site) {
+                        TextField("Site", text: $model.site)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
                 TextField("Username", text: $model.username)
                     .textFieldStyle(.roundedBorder)
@@ -98,7 +103,7 @@ struct SettingsView: View {
                     Button("Disconnect") { model.disconnect() }
                         .disabled(!model.canDisconnect)
                 }
-                Text("Connect stays disabled until password, TOTP secret, and Accessibility are set.")
+                Text("Connect stays disabled until site, username, password, TOTP secret, and Accessibility are set.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -117,9 +122,6 @@ struct SettingsView: View {
 
     private var siteChoices: [String] {
         var names = model.snapshot.sites.map(\.name)
-        for fallback in ["vpn.rutube-net.ru", "vpn.gpmdi.ru"] where !names.contains(fallback) {
-            names.append(fallback)
-        }
         if !model.site.isEmpty, !names.contains(model.site) {
             names.insert(model.site, at: 0)
         }

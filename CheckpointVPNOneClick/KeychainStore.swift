@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 enum KeychainStore {
-    static let service = "local.nn.selin.CheckpointVPNOneClick"
+    static let service = "local.checkpointvpn.oneclick"
     static let passwordAccount = "vpn-password"
     static let totpAccount = "totp-secret"
 

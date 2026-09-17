@@ -1,6 +1,6 @@
 name: CheckpointVPNOneClick
 options:
-  bundleIdPrefix: local.nn.selin
+  bundleIdPrefix: local.checkpointvpn
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -22,7 +22,7 @@ targets:
           - "**/*.entitlements"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.nn.selin.CheckpointVPNOneClick
+        PRODUCT_BUNDLE_IDENTIFIER: local.checkpointvpn.oneclick
         PRODUCT_NAME: CheckpointVPNOneClick
         PRODUCT_MODULE_NAME: CheckpointVPNOneClick
         MARKETING_VERSION: "1.0"
@@ -59,7 +59,7 @@ targets:
       - target: CheckpointVPNOneClick
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.nn.selin.CheckpointVPNOneClickTests
+        PRODUCT_BUNDLE_IDENTIFIER: local.checkpointvpn.oneclick.tests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CheckpointVPNOneClick.app/Contents/MacOS/CheckpointVPNOneClick"
         BUNDLE_LOADER: "$(TEST_HOST)"
