@@ -9,35 +9,33 @@ This is not a VPN client and is not affiliated with Check Point. The official En
 - [v1.0.0 DMG](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/tag/v1.0.0)
 - [Latest release](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/latest)
 
-The GitHub build is ad-hoc signed (no Apple Developer ID). After dragging the app to `/Applications`, right-click → **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app`. A DMG update may require turning Accessibility back on.
-
-To cut a new release: **Actions → Release DMG → Run workflow**, tag like `v1.0.1`.
+The GitHub build is ad-hoc signed (no Apple Developer ID). Drag the app to `/Applications`, then right-click → **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app`. A DMG update may require turning Accessibility back on.
 
 ## Requirements
 
 - macOS 14+
 - [Check Point Endpoint Security VPN](https://support.checkpoint.com/) (`/Applications/Endpoint Security VPN.app` and `trac`)
-- Xcode
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
 
-## Install
+Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) are needed only to build from source. Skip them if you install the DMG.
+
+## Setup
+
+1. Open the installed app (from `/Applications` or `~/Applications`, not from Xcode’s DerivedData).
+2. System Settings → Privacy & Security → **Accessibility** → enable Checkpoint VPN.
+3. Quit from the menu bar and open the app again.
+4. Allow **System Events** if macOS asks (Automation).
+5. Settings: site, username, VPN password, TOTP secret (Base32, `otpauth://`, or QR).
+6. Connect from the menu bar or Settings.
+
+## Build from source
 
 ```bash
 make install
 ```
 
-This builds the app, signs it with a local certificate, and copies it to `~/Applications/CheckpointVPNOneClick.app`.
+This builds the app, signs it with a local certificate, and copies it to `~/Applications/CheckpointVPNOneClick.app`. That signature stays stable so Accessibility survives rebuilds.
 
-Then:
-
-1. Open the app from `~/Applications` (not from Xcode’s DerivedData).
-2. System Settings → Privacy & Security → **Accessibility** → enable Checkpoint VPN.
-3. Quit from the menu bar and open `~/Applications/CheckpointVPNOneClick.app` again.
-4. Allow **System Events** if macOS asks (Automation).
-5. Settings: site, username, VPN password, TOTP secret (Base32, `otpauth://`, or QR).
-6. Connect from the menu bar or Settings.
-
-## Build / test without installing
+Without installing:
 
 ```bash
 make build
@@ -45,3 +43,5 @@ make test
 ```
 
 `make generate` only regenerates `CheckpointVPNOneClick.xcodeproj` from `project.yml`.
+
+To cut a new release: **Actions → Release DMG → Run workflow**, tag like `v1.0.1`.
