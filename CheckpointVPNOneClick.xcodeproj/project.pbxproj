@@ -249,7 +249,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = local.nn.selin.CheckpointVPNOneClick;
+				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick;
 				PRODUCT_MODULE_NAME = CheckpointVPNOneClick;
 				PRODUCT_NAME = CheckpointVPNOneClick;
 				SDKROOT = macosx;
@@ -290,7 +290,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = local.nn.selin.CheckpointVPNOneClick;
+				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick;
 				PRODUCT_MODULE_NAME = CheckpointVPNOneClick;
 				PRODUCT_NAME = CheckpointVPNOneClick;
 				SDKROOT = macosx;
