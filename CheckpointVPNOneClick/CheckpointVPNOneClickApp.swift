@@ -10,10 +10,10 @@ struct CheckpointVPNOneClickApp: App {
         MenuBarExtra {
             MenuContent(model: model)
         } label: {
-            Image(model.snapshot.overall.menuBarImageName)
+            Image(model.menuBarImageName)
                 .renderingMode(.template)
-                .id(model.snapshot.overall.menuBarImageName)
-                .accessibilityLabel(model.snapshot.overall.title)
+                .id(model.menuBarImageName)
+                .accessibilityLabel(model.menuBarConnected ? "Connected" : model.snapshot.overall.title)
         }
         .menuBarExtraStyle(.menu)
 
@@ -89,6 +89,10 @@ struct MenuContent: View {
                 .disabled(!model.canConnect)
             Button("Disconnect") { model.disconnect() }
                 .disabled(!model.canDisconnect)
+            Button(model.redShieldConnected ? "Switch to Check Point" : "Switch to Red Shield") {
+                model.swapVPNs(wantRedShield: !model.redShieldConnected)
+            }
+            .disabled(model.isBusy || !model.redShieldInstalled)
             Divider()
             Button("Settings…") {
                 openSettings()
@@ -102,8 +106,19 @@ struct MenuContent: View {
     }
 
     private var statusLine: String {
+        if model.isBusy {
+            if model.redShieldConnected { return "Working… Red Shield" }
+            let site = model.snapshot.active?.name ?? model.site
+            return "Working… \(site)"
+        }
+        if model.snapshot.overall == .connected {
+            let site = model.snapshot.active?.name ?? model.site
+            return "Connected — \(site)"
+        }
+        if model.redShieldConnected {
+            return "Connected — Red Shield"
+        }
         let site = model.snapshot.active?.name ?? model.site
-        if model.isBusy { return "Working… \(site)" }
         return "\(model.snapshot.overall.title) — \(site)"
     }
 }

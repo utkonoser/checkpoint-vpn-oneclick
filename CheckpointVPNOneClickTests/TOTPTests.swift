@@ -54,4 +54,16 @@ final class TOTPTests: XCTestCase {
         XCTAssertEqual(snapshot.active?.name, "vpn-backup.example.com")
         XCTAssertEqual(snapshot.overall, .connected)
     }
+
+    func testRedShieldInstalledOnlyWhenPathExists() throws {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rs-missing-\(UUID().uuidString)")
+        XCTAssertFalse(RedShieldVPN.isInstalled(at: missing.path))
+
+        let present = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rs-present-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: present, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: present) }
+        XCTAssertTrue(RedShieldVPN.isInstalled(at: present.path))
+    }
 }

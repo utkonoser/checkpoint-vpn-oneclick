@@ -11,6 +11,13 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("VPN") {
+                Toggle("Red Shield", isOn: model.redShieldToggle)
+                    .disabled(model.isBusy || !model.redShieldInstalled)
+                Text(model.redShieldInstalled
+                     ? "Swaps Check Point and Red Shield."
+                     : "Install Red Shield VPN in /Applications to enable this switch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if siteChoices.isEmpty {
                     TextField("Site", text: $model.site)
                         .textFieldStyle(.roundedBorder)
@@ -86,7 +93,11 @@ struct SettingsView: View {
 
             Section("Connect") {
                 LabeledContent("State") {
-                    Text(model.isBusy ? "Working…" : model.snapshot.overall.title)
+                    Text(model.isBusy ? "Working…" : (
+                        model.redShieldConnected && model.snapshot.overall != .connected
+                            ? "Connected — Red Shield"
+                            : model.snapshot.overall.title
+                    ))
                 }
                 if let active = model.snapshot.active {
                     LabeledContent("Active site", value: active.name)

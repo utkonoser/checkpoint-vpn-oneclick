@@ -13,6 +13,8 @@ final class AppModel: ObservableObject {
     @Published var hasPassword = false
     @Published var hasTOTP = false
     @Published var accessibilityTrusted = false
+    @Published var redShieldInstalled = false
+    @Published var redShieldConnected = false
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
 
@@ -57,6 +59,21 @@ final class AppModel: ObservableObject {
 
     var canDisconnect: Bool {
         !isBusy && snapshot.overall == .connected
+    }
+
+    var menuBarConnected: Bool {
+        snapshot.overall == .connected || redShieldConnected
+    }
+
+    var menuBarImageName: String {
+        menuBarConnected ? "MenuBarConnected" : "MenuBarDisconnected"
+    }
+
+    var redShieldToggle: Binding<Bool> {
+        Binding(
+            get: { self.redShieldConnected },
+            set: { self.swapVPNs(wantRedShield: $0) }
+        )
     }
 
     func refreshSecrets() {
@@ -110,6 +127,14 @@ final class AppModel: ObservableObject {
                 lastError = error.localizedDescription
             }
         }
+        let installed = RedShieldVPN.isInstalled()
+        if installed != redShieldInstalled {
+            redShieldInstalled = installed
+        }
+        let rs = installed && RedShieldVPN.isConnected()
+        if rs != redShieldConnected {
+            redShieldConnected = rs
+        }
     }
 
     func connect() {
@@ -148,6 +173,37 @@ final class AppModel: ObservableObject {
                     self.isBusy = false
                 }
             }
+        }
+    }
+
+    func swapVPNs(wantRedShield: Bool) {
+        guard redShieldInstalled, !isBusy else { return }
+        if wantRedShield, redShieldConnected { return }
+        if !wantRedShield, !redShieldConnected, snapshot.overall == .connected { return }
+
+        isBusy = true
+        lastError = nil
+        let site = self.site
+        let username = self.username
+        Task {
+            do {
+                if wantRedShield {
+                    if snapshot.overall == .connected {
+                        try ConnectEngine.disconnect()
+                    }
+                    try await RedShieldVPN.setConnected(true)
+                } else {
+                    if RedShieldVPN.isConnected() {
+                        try await RedShieldVPN.setConnected(false)
+                    }
+                    try await ConnectEngine.connect(site: site, username: username)
+                }
+                refreshStatus()
+            } catch {
+                lastError = error.localizedDescription
+                refreshStatus()
+            }
+            isBusy = false
         }
     }
 

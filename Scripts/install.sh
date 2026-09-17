@@ -16,7 +16,8 @@ APP="$BUILD_DIR/Build/Products/Debug/CheckpointVPNOneClick.app"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$SUPPORT" "$INSTALL_DIR"
+mkdir -p "$SUPPORT" "$INSTALL_DIR" "$ROOT/build"
+touch "$ROOT/build/.metadata_never_index"
 
 unlock_keychain() {
   security set-keychain-settings -t 86400 -u "$KEYCHAIN" >/dev/null 2>&1 || true
@@ -113,6 +114,27 @@ sleep 0.4
 rm -rf "$INSTALL"
 ditto "$APP" "$INSTALL"
 xattr -dr com.apple.quarantine "$INSTALL" 2>/dev/null || true
+
+remove_extra_apps() {
+  local keep="" lsreg
+  keep="$(cd "$INSTALL" && pwd -P)"
+  lsreg="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+  local roots=("$HOME/Applications" /Applications "$ROOT/build")
+  if [[ -d "$HOME/Library/Developer/Xcode/DerivedData" ]]; then
+    roots+=("$HOME/Library/Developer/Xcode/DerivedData")
+  fi
+  local app real
+  while IFS= read -r app; do
+    [[ -d "$app" ]] || continue
+    real="$(cd "$app" && pwd -P)"
+    [[ "$real" == "$keep" ]] && continue
+    echo "Removing extra copy $app"
+    "$lsreg" -u "$app" >/dev/null 2>&1 || true
+    rm -rf "$app"
+  done < <(find "${roots[@]}" -name 'CheckpointVPNOneClick.app' -type d -prune -print 2>/dev/null)
+  "$lsreg" -f "$INSTALL" >/dev/null 2>&1 || true
+}
+remove_extra_apps
 
 echo "Installed $INSTALL"
 open "$INSTALL"

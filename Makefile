@@ -12,6 +12,7 @@ generate:
 	xcodegen generate
 
 build: generate
+	mkdir -p build && touch build/.metadata_never_index
 	$(XCODEBUILD) build
 
 test: generate

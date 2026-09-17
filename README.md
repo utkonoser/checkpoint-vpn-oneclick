@@ -27,6 +27,8 @@ Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcode
 5. Settings: site, username, VPN password, TOTP secret (Base32, `otpauth://`, or QR).
 6. Connect from the menu bar or Settings.
 
+If Red Shield VPN is installed, a **Red Shield** switch appears in the menu and Settings: it disconnects Check Point and connects Red Shield, or the reverse. Without that app the switch is hidden and nothing else changes.
+
 ## Build from source
 
 ```bash

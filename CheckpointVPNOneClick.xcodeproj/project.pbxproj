@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		040FE429A39D4CF790B4948D /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EBD2A28116D773CD33E55B /* KeychainStore.swift */; };
 		1BBE2EFEEA592AECFE82AC5B /* QRCodeImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18CFD0C2C7BBD21DB162D2A5 /* QRCodeImporter.swift */; };
+		3274E921082E7523E7596F0D /* RedShieldVPN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781B66DE10A6665DC7056511 /* RedShieldVPN.swift */; };
 		512068485344BD16C30A97FC /* CheckpointAX.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B36B9E4477DE7FA56AC37F7 /* CheckpointAX.swift */; };
 		5855A1100ACB560B44C5508E /* ConnectEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D36B99AD9D3A0CED5FD3940 /* ConnectEngine.swift */; };
 		72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */; };
@@ -39,6 +40,7 @@
 		29BA26CCCCE6E4FB7BE9182D /* CheckpointVPNOneClick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CheckpointVPNOneClick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D36B99AD9D3A0CED5FD3940 /* ConnectEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectEngine.swift; sourceTree = "<group>"; };
 		5B36B9E4477DE7FA56AC37F7 /* CheckpointAX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointAX.swift; sourceTree = "<group>"; };
+		781B66DE10A6665DC7056511 /* RedShieldVPN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedShieldVPN.swift; sourceTree = "<group>"; };
 		914FD065753290AC78F3B4EC /* CheckpointVPNOneClickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointVPNOneClickApp.swift; sourceTree = "<group>"; };
 		A042251630BC48547B2EE6F6 /* TOTPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPTests.swift; sourceTree = "<group>"; };
 		B0C3A68C68B108EA0AFB1D69 /* TracClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TracClient.swift; sourceTree = "<group>"; };
@@ -77,6 +79,7 @@
 				0CB01AD572A42B7262BD0EB6 /* Info.plist */,
 				B0EBD2A28116D773CD33E55B /* KeychainStore.swift */,
 				18CFD0C2C7BBD21DB162D2A5 /* QRCodeImporter.swift */,
+				781B66DE10A6665DC7056511 /* RedShieldVPN.swift */,
 				249C700FFF3713A9E3DF03DA /* SettingsView.swift */,
 				BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */,
 				B0C3A68C68B108EA0AFB1D69 /* TracClient.swift */,
@@ -190,6 +193,7 @@
 				5855A1100ACB560B44C5508E /* ConnectEngine.swift in Sources */,
 				040FE429A39D4CF790B4948D /* KeychainStore.swift in Sources */,
 				1BBE2EFEEA592AECFE82AC5B /* QRCodeImporter.swift in Sources */,
+				3274E921082E7523E7596F0D /* RedShieldVPN.swift in Sources */,
 				7D04DF47DA834ED3FF3A1CC6 /* SettingsView.swift in Sources */,
 				72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */,
 				ED243C0F01B7D57EE40140F3 /* TracClient.swift in Sources */,
@@ -252,6 +256,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick;
 				PRODUCT_MODULE_NAME = CheckpointVPNOneClick;
 				PRODUCT_NAME = CheckpointVPNOneClick;
+				REGISTER_APP_IN_LAUNCH_SERVICES = NO;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -293,6 +298,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.checkpointvpn.oneclick;
 				PRODUCT_MODULE_NAME = CheckpointVPNOneClick;
 				PRODUCT_NAME = CheckpointVPNOneClick;
+				REGISTER_APP_IN_LAUNCH_SERVICES = NO;
 				SDKROOT = macosx;
 			};
 			name = Debug;

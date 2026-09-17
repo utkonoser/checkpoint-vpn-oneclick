@@ -13,6 +13,8 @@ APP="$BUILD_DIR/Build/Products/Release/$APP_NAME"
 DMG="$ROOT/build/CheckpointVPNOneClick-${VERSION}.dmg"
 
 cd "$ROOT"
+mkdir -p "$ROOT/build"
+touch "$ROOT/build/.metadata_never_index"
 if command -v xcodegen >/dev/null 2>&1; then
   xcodegen generate
 fi
