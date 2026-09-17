@@ -4,6 +4,15 @@ Menu bar helper for **Check Point Endpoint Security VPN** on macOS. It fills the
 
 This is not a VPN client and is not affiliated with Check Point. The official Endpoint Security app must already be installed.
 
+## Download
+
+- [v1.0.0 DMG](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/tag/v1.0.0)
+- [Latest release](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/latest)
+
+The GitHub build is ad-hoc signed (no Apple Developer ID). After dragging the app to `/Applications`, right-click → **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app`. A DMG update may require turning Accessibility back on.
+
+To cut a new release: **Actions → Release DMG → Run workflow**, tag like `v1.0.1`.
+
 ## Requirements
 
 - macOS 14+

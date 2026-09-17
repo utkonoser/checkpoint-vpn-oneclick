@@ -1,4 +1,4 @@
-.PHONY: generate build test install clean
+.PHONY: generate build test install dmg clean
 
 XCODEBUILD = xcodebuild \
 	-project CheckpointVPNOneClick.xcodeproj \
@@ -19,6 +19,9 @@ test: generate
 
 install:
 	./Scripts/install.sh
+
+dmg: generate
+	./Scripts/package-dmg.sh
 
 clean:
 	rm -rf build

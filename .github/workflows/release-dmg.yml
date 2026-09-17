@@ -1,0 +1,39 @@
+name: Release DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z)
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: Build DMG and publish release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install xcodegen
+
+      - name: Build DMG
+        env:
+          VERSION: ${{ inputs.tag }}
+        run: make dmg
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag }}"
+          gh release create "$tag" build/CheckpointVPNOneClick-*.dmg \
+            --title "Checkpoint VPN One-Click $tag" \
+            --notes "Ad-hoc signed macOS 14+ universal DMG. First launch: right-click the app → Open (Gatekeeper). Accessibility may need to be re-enabled after an update." \
+            --latest
