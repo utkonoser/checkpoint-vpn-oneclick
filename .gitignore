@@ -1,0 +1,15 @@
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.hmap
+.build/
+.swiftpm/
+.cursor/
+.env
+.env.*
+*.dSYM
+*.dSYM.zip
+CheckpointVPNOneClick.xcodeproj/xcuserdata/
+CheckpointVPNOneClick.xcodeproj/project.xcworkspace/xcuserdata/
