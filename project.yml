@@ -29,6 +29,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Checkpoint VPN
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
@@ -51,6 +52,12 @@ targets:
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.automation.apple-events: true
+    postCompileScripts:
+      - name: Unregister build from Launchpad
+        basedOnDependencyAnalysis: false
+        script: |
+          # Xcode 26 still lsregister's the DerivedData .app even with REGISTER_APP_IN_LAUNCH_SERVICES=NO.
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME" >/dev/null 2>&1 || true
   CheckpointVPNOneClickTests:
     type: bundle.unit-test
     platform: macOS

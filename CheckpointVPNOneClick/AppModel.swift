@@ -188,11 +188,13 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 if wantRedShield {
+                    _ = try await RedShieldVPN.ensureRunning()
                     if snapshot.overall == .connected {
                         try ConnectEngine.disconnect()
                     }
                     try await RedShieldVPN.setConnected(true)
                 } else {
+                    _ = try await CheckpointAX.ensureGUIRunning()
                     if RedShieldVPN.isConnected() {
                         try await RedShieldVPN.setConnected(false)
                     }

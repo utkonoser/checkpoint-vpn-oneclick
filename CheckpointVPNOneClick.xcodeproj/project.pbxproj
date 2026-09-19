@@ -121,6 +121,7 @@
 			buildConfigurationList = 085EF16EFCE1B19E5102CEAD /* Build configuration list for PBXNativeTarget "CheckpointVPNOneClick" */;
 			buildPhases = (
 				7AE6FC42BC5B3F2BD7C05B73 /* Sources */,
+				F4CF7675B3DB3206455D716B /* Unregister build from Launchpad */,
 				12C3AD0342494B06747B9A7D /* Resources */,
 			);
 			buildRules = (
@@ -181,6 +182,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		F4CF7675B3DB3206455D716B /* Unregister build from Launchpad */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Unregister build from Launchpad";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Xcode 26 still lsregister's the DerivedData .app even with REGISTER_APP_IN_LAUNCH_SERVICES=NO.\n/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u \"$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME\" >/dev/null 2>&1 || true\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7AE6FC42BC5B3F2BD7C05B73 /* Sources */ = {

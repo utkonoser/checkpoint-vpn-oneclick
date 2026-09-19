@@ -35,26 +35,31 @@ enum RedShieldVPN {
     @discardableResult
     static func ensureRunning() async throws -> NSRunningApplication {
         guard isInstalled() else { throw Error.notInstalled }
-        if let running = runningApp() {
-            running.activate()
-            return running
-        }
         let url = URL(fileURLWithPath: defaultAppPath)
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
+        // Always reopen: a hidden/quit-to-tray process is not enough to click Connect.
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
-        for _ in 0..<50 {
-            if let running = runningApp() { return running }
-            try await Task.sleep(nanoseconds: 100_000_000)
+        let deadline = Date().addingTimeInterval(10)
+        var last = app
+        while Date() < deadline {
+            try Task.checkCancellation()
+            if let running = runningApp() {
+                last = running
+                running.unhide()
+                running.activate()
+                if windowFrame() != nil { return running }
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
         }
-        return app
+        return last
     }
 
     static func setConnected(_ want: Bool, timeout: TimeInterval = 20) async throws {
         guard isInstalled() else { throw Error.notInstalled }
         guard CheckpointAX.isTrusted(prompt: true) else { throw Error.notTrusted }
         _ = try await ensureRunning()
-        try await Task.sleep(nanoseconds: 700_000_000)
+        try await Task.sleep(nanoseconds: 250_000_000)
         if tunnelIsUp() == want { return }
 
         if !clickConnectSwitch() {

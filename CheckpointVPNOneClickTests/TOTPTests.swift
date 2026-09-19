@@ -66,4 +66,23 @@ final class TOTPTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: present) }
         XCTAssertTrue(RedShieldVPN.isInstalled(at: present.path))
     }
+
+    func testConnectPollGivesUpWhenIdle() {
+        XCTAssertEqual(
+            ConnectPoll.step(overall: .connected, sawConnecting: false, idleTicks: 0),
+            .connected
+        )
+        XCTAssertEqual(
+            ConnectPoll.step(overall: .idle, sawConnecting: true, idleTicks: 1),
+            .failed("VPN dropped back to Idle")
+        )
+        XCTAssertEqual(
+            ConnectPoll.step(overall: .idle, sawConnecting: false, idleTicks: ConnectPoll.idleGiveUpTicks),
+            .failed("VPN stayed Idle")
+        )
+        XCTAssertEqual(
+            ConnectPoll.step(overall: .connecting, sawConnecting: false, idleTicks: 20),
+            .wait
+        )
+    }
 }

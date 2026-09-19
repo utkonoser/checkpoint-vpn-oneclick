@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import CoreGraphics
 import Foundation
 
 enum CheckpointAX {
@@ -38,19 +39,28 @@ enum CheckpointAX {
 
     @discardableResult
     static func ensureGUIRunning() async throws -> NSRunningApplication {
-        if let running = runningApp() { return running }
+        guard FileManager.default.fileExists(atPath: appPath) else { throw Error.appNotRunning }
         let url = URL(fileURLWithPath: appPath)
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
+        // Always reopen: the tray process can be alive with no window.
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
-        for _ in 0..<50 {
-            if let running = runningApp() { return running }
-            try await Task.sleep(nanoseconds: 100_000_000)
+        let deadline = Date().addingTimeInterval(10)
+        var last = app
+        while Date() < deadline {
+            try Task.checkCancellation()
+            if let running = runningApp() {
+                last = running
+                running.unhide()
+                running.activate()
+                if hasWindow() { return running }
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
         }
-        return app
+        return last
     }
 
-    static func fillLogin(username: String, password: String, timeout: TimeInterval = 25) async throws {
+    static func fillLogin(username: String, password: String, timeout: TimeInterval = 10) async throws {
         guard isTrusted(prompt: true) else { throw Error.notTrusted }
         let deadline = Date().addingTimeInterval(timeout)
         var typedPassword = false
@@ -91,7 +101,7 @@ enum CheckpointAX {
         throw Error.timeout("login")
     }
 
-    static func fillChallenge(codeProvider: () -> String, timeout: TimeInterval = 40) async throws {
+    static func fillChallenge(codeProvider: () -> String, timeout: TimeInterval = 10) async throws {
         guard isTrusted(prompt: true) else { throw Error.notTrusted }
         let deadline = Date().addingTimeInterval(timeout)
         var typed = false
@@ -259,6 +269,26 @@ enum CheckpointAX {
     private static func applicationElement() -> AXUIElement? {
         guard let app = runningApp() else { return nil }
         return AXUIElementCreateApplication(app.processIdentifier)
+    }
+
+    private static func hasWindow() -> Bool {
+        var names: Set<String> = [
+            "Endpoint Security VPN",
+            "EndpointConnect",
+            "Check Point Endpoint Security VPN",
+        ]
+        if let localized = runningApp()?.localizedName, !localized.isEmpty {
+            names.insert(localized)
+        }
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let info = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+        return info.contains { window in
+            let owner = window[kCGWindowOwnerName as String] as? String ?? ""
+            let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+            return layer == 0 && names.contains(owner)
+        }
     }
 
     private static func activate() {
