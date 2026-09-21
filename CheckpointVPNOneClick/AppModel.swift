@@ -12,8 +12,6 @@ final class AppModel: ObservableObject {
     @Published var isBusy = false
     @Published var hasPassword = false
     @Published var hasTOTP = false
-    @Published var totpAccounts: [TOTP.Account] = []
-    @Published var selectedTOTPID = ""
     @Published var accessibilityTrusted = false
     @Published var redShieldInstalled = false
     @Published var redShieldConnected = false
@@ -28,6 +26,15 @@ final class AppModel: ObservableObject {
 
     var isRunningFromInstall: Bool {
         runningPath == Self.installPath
+    }
+
+    var siteChoices: [String] {
+        var names = snapshot.sites.map(\.name)
+        let current = site.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !current.isEmpty, !names.contains(current) {
+            names.insert(current, at: 0)
+        }
+        return names
     }
 
     init() {
@@ -78,11 +85,23 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func selectSite(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != site else { return }
+        site = trimmed
+        refreshSecrets()
+    }
+
     func refreshSecrets() {
-        hasPassword = KeychainStore.hasPassword()
-        totpAccounts = (try? KeychainStore.totpAccounts()) ?? []
-        selectedTOTPID = (try? KeychainStore.selectedTOTP()?.id) ?? totpAccounts.first?.id ?? ""
-        hasTOTP = !totpAccounts.isEmpty
+        let current = site.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !current.isEmpty {
+            try? KeychainStore.migrateLegacySecretsIfNeeded(to: current)
+            hasPassword = KeychainStore.hasPassword(site: current)
+            hasTOTP = KeychainStore.hasTOTPSecret(site: current)
+        } else {
+            hasPassword = false
+            hasTOTP = false
+        }
         refreshPermissions()
     }
 
@@ -110,24 +129,10 @@ final class AppModel: ObservableObject {
     }
 
     func importTOTP(_ raw: String) throws {
+        let current = site.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !current.isEmpty else { throw KeychainStore.Error.missingSite }
         let normalized = try QRCodeImporter.normalizedSecret(raw)
-        try KeychainStore.addTOTP(secret: normalized, name: TOTP.defaultName(from: normalized))
-        refreshSecrets()
-    }
-
-    func selectTOTP(id: String) {
-        try? KeychainStore.selectTOTP(id: id)
-        refreshSecrets()
-    }
-
-    func renameTOTP(id: String, name: String) {
-        guard let index = totpAccounts.firstIndex(where: { $0.id == id }) else { return }
-        totpAccounts[index].name = name
-        try? KeychainStore.renameTOTP(id: id, name: name)
-    }
-
-    func deleteTOTP(id: String) {
-        try? KeychainStore.deleteTOTP(id: id)
+        try KeychainStore.setTOTPSecret(normalized, site: current)
         refreshSecrets()
     }
 
@@ -138,6 +143,11 @@ final class AppModel: ObservableObject {
                 || new.active?.name != snapshot.active?.name
                 || new.sites != snapshot.sites {
                 snapshot = new
+            }
+            if site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let first = new.sites.first?.name {
+                site = first
+                refreshSecrets()
             }
         } catch {
             if snapshot.sites.isEmpty == false {

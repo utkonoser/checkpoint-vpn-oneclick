@@ -12,8 +12,8 @@ enum ConnectEngine {
 
         var errorDescription: String? {
             switch self {
-            case .missingPassword: return "Save the VPN password in Settings first."
-            case .missingTOTP: return "Save the TOTP secret in Settings first."
+            case .missingPassword: return "Save the VPN password for this site in Settings first."
+            case .missingTOTP: return "Save the TOTP secret for this site in Settings first."
             case .missingUsername: return "Username is empty."
             case .missingSite: return "No VPN site selected."
             case .alreadyConnected: return "Already connected."
@@ -27,8 +27,8 @@ enum ConnectEngine {
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !site.isEmpty else { throw Error.missingSite }
         guard !username.isEmpty else { throw Error.missingUsername }
-        guard let password = try KeychainStore.password(), !password.isEmpty else { throw Error.missingPassword }
-        guard let totpRaw = try KeychainStore.totpSecret(), !totpRaw.isEmpty else { throw Error.missingTOTP }
+        guard let password = try KeychainStore.password(site: site), !password.isEmpty else { throw Error.missingPassword }
+        guard let totpRaw = try KeychainStore.totpSecret(site: site), !totpRaw.isEmpty else { throw Error.missingTOTP }
         let secret = try TOTP.parseSecret(totpRaw)
 
         if let snapshot = try? TracClient.info(), snapshot.overall == .connected {
@@ -40,17 +40,29 @@ enum ConnectEngine {
         }
 
         _ = try await CheckpointAX.ensureGUIRunning()
-        try await Task.sleep(nanoseconds: 400_000_000)
         try TracClient.connectGUI(site: site)
 
-        try await CheckpointAX.fillLogin(username: username, password: password)
+        // OTP reject / failed password often returns to the empty login form — retry the pair.
+        for round in 1...3 {
+            do {
+                try await CheckpointAX.fillLogin(username: username, password: password)
 
-        let remaining = TOTP.secondsRemaining(period: secret.period)
-        if remaining < TOTP.rolloverSafety {
-            try await Task.sleep(nanoseconds: UInt64((remaining + 0.25) * 1_000_000_000))
-        }
-        try await CheckpointAX.fillChallenge {
-            TOTP.code(for: secret)
+                let remaining = TOTP.secondsRemaining(period: secret.period)
+                if remaining < TOTP.rolloverSafety {
+                    try await Task.sleep(nanoseconds: UInt64((remaining + 0.35) * 1_000_000_000))
+                }
+                try await CheckpointAX.fillChallenge(expectedDigits: secret.digits, maxAttempts: 3) {
+                    TOTP.code(for: secret)
+                }
+                break
+            } catch let CheckpointAX.Error.timeout(step) {
+                guard round < 3, step == "login" || step == "challenge" || step.contains("back-to-login") else {
+                    throw CheckpointAX.Error.timeout(step)
+                }
+                NSLog("ConnectEngine retry \(round) after \(step)")
+                try await Task.sleep(nanoseconds: 400_000_000)
+                try? TracClient.connectGUI(site: site)
+            }
         }
 
         try await waitUntilConnected()

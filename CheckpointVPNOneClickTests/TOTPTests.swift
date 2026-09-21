@@ -31,28 +31,10 @@ final class TOTPTests: XCTestCase {
         _ = try TOTP.parseSecret(decoded)
     }
 
-    func testTOTPDefaultNameFromQRLabel() {
-        XCTAssertEqual(
-            TOTP.defaultName(from: "otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP"),
-            "Work:user"
-        )
-        XCTAssertEqual(
-            TOTP.defaultName(from: "otpauth://totp/Check%20Point:nn.selin?secret=JBSWY3DPEHPK3PXP"),
-            "Check Point:nn.selin"
-        )
-        XCTAssertEqual(TOTP.defaultName(from: "JBSWY3DPEHPK3PXP"), "TOTP")
-        XCTAssertEqual(
-            TOTP.defaultName(from: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP&issuer=Corp"),
-            "Corp"
-        )
-    }
-
-    func testTOTPVaultRoundTrip() throws {
-        let account = TOTP.Account(id: "1", name: "Work:user", secret: "otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP")
-        let vault = TOTP.Vault(accounts: [account], selectedID: "1")
-        let data = try JSONEncoder().encode(vault)
-        let out = try JSONDecoder().decode(TOTP.Vault.self, from: data)
-        XCTAssertEqual(out, vault)
+    func testSiteScopedKeychainAccounts() throws {
+        XCTAssertEqual(try KeychainStore.passwordAccount(for: " vpn.example.com "), "password:vpn.example.com")
+        XCTAssertEqual(try KeychainStore.totpAccount(for: "vpn.example.com"), "totp:vpn.example.com")
+        XCTAssertThrowsError(try KeychainStore.passwordAccount(for: "  "))
     }
 
     func testKeychainPersistsAcrossCacheClear() throws {
@@ -89,6 +71,14 @@ final class TOTPTests: XCTestCase {
         try FileManager.default.createDirectory(at: present, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: present) }
         XCTAssertTrue(RedShieldVPN.isInstalled(at: present.path))
+    }
+
+    func testAccessDeniedDetection() {
+        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Access Denied"))
+        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Authentication failed"))
+        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Invalid credentials"))
+        XCTAssertFalse(CheckpointAX.looksLikeAccessDenied("One-time password"))
+        XCTAssertFalse(CheckpointAX.looksLikeAccessDenied("Connect"))
     }
 
     func testConnectPollGivesUpWhenIdle() {

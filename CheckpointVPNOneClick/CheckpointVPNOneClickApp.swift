@@ -85,6 +85,22 @@ struct MenuContent: View {
                     .lineLimit(3)
             }
             Divider()
+            if !model.siteChoices.isEmpty {
+                Menu("Check Point site") {
+                    ForEach(model.siteChoices, id: \.self) { site in
+                        Button {
+                            model.selectSite(site)
+                        } label: {
+                            if site == model.site {
+                                Text("✓ \(site)")
+                            } else {
+                                Text(site)
+                            }
+                        }
+                    }
+                }
+                .disabled(model.isBusy)
+            }
             Button("Connect") { model.connect() }
                 .disabled(!model.canConnect)
             Button("Disconnect") { model.disconnect() }
@@ -102,13 +118,16 @@ struct MenuContent: View {
             Divider()
             Button("Quit") { NSApplication.shared.terminate(nil) }
         }
-        .onAppear { model.refreshStatus() }
+        .onAppear {
+            model.refreshStatus()
+            model.refreshSecrets()
+        }
     }
 
     private var statusLine: String {
         if model.isBusy {
             if model.redShieldConnected { return "Working… Red Shield" }
-            let site = model.snapshot.active?.name ?? model.site
+            let site = model.site.isEmpty ? (model.snapshot.active?.name ?? "…") : model.site
             return "Working… \(site)"
         }
         if model.snapshot.overall == .connected {
@@ -118,7 +137,7 @@ struct MenuContent: View {
         if model.redShieldConnected {
             return "Connected — Red Shield"
         }
-        let site = model.snapshot.active?.name ?? model.site
+        let site = model.site.isEmpty ? (model.snapshot.active?.name ?? "…") : model.site
         return "\(model.snapshot.overall.title) — \(site)"
     }
 }

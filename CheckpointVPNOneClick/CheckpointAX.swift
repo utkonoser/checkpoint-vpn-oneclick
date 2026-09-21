@@ -37,116 +37,237 @@ enum CheckpointAX {
         return AXIsProcessTrusted()
     }
 
+    /// Ensure the Check Point process is up. Do not wait for a window — `connectGUI` opens the login UI.
     @discardableResult
     static func ensureGUIRunning() async throws -> NSRunningApplication {
         guard FileManager.default.fileExists(atPath: appPath) else { throw Error.appNotRunning }
+        if let running = runningApp() {
+            running.unhide()
+            running.activate()
+            return running
+        }
         let url = URL(fileURLWithPath: appPath)
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
-        // Always reopen: the tray process can be alive with no window.
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
-        let deadline = Date().addingTimeInterval(10)
-        var last = app
+        let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
             try Task.checkCancellation()
             if let running = runningApp() {
-                last = running
                 running.unhide()
                 running.activate()
-                if hasWindow() { return running }
+                return running
             }
-            try await Task.sleep(nanoseconds: 200_000_000)
+            try await Task.sleep(nanoseconds: 100_000_000)
         }
-        return last
+        return app
     }
 
-    static func fillLogin(username: String, password: String, timeout: TimeInterval = 10) async throws {
+    static func fillLogin(username: String, password: String, timeout: TimeInterval = 12) async throws {
         guard isTrusted(prompt: true) else { throw Error.notTrusted }
         let deadline = Date().addingTimeInterval(timeout)
-        var typedPassword = false
         var lastDump = ""
-        while Date() < deadline {
+        var submits = 0
+
+        while Date() < deadline, submits < 4 {
             try Task.checkCancellation()
             activate()
             guard let app = applicationElement() else {
-                try await Task.sleep(nanoseconds: 200_000_000)
+                try await Task.sleep(nanoseconds: 150_000_000)
                 continue
             }
             let snapshot = capture(app)
             lastDump = dump(app, indent: 0)
-            guard let passwordField = snapshot.passwordField ?? snapshot.secureFields.first?.element else {
+
+            // Already past login (OTP / connecting UI).
+            if !snapshot.isLoginScreen,
+               snapshot.passwordField == nil || snapshot.looksLikeChallenge || snapshot.responseField != nil {
+                if snapshot.looksLikeChallenge || snapshot.responseField != nil || snapshot.secureFields.count == 1 {
+                    return
+                }
+            }
+
+            guard snapshot.passwordField != nil || !snapshot.secureFields.isEmpty else {
+                try await Task.sleep(nanoseconds: 150_000_000)
+                continue
+            }
+
+            if let userField = snapshot.usernameField {
+                let current = attr(userField, kAXValueAttribute as String)
+                if current != username {
+                    typeInto(userField, username)
+                    usleep(80_000)
+                }
+            }
+
+            let clicked = loginViaSystemEvents(username: username, password: password)
+                || submitLoginViaAX(snapshot: snapshot, username: username, password: password)
+            guard clicked else {
                 try await Task.sleep(nanoseconds: 200_000_000)
                 continue
             }
-            if let userField = snapshot.usernameField, attr(userField, kAXValueAttribute as String) != username {
-                typeInto(userField, username)
-            }
-            if !typedPassword {
-                if loginViaSystemEvents(username: username, password: password) {
+            submits += 1
+
+            let watchUntil = Date().addingTimeInterval(3.0)
+            while Date() < watchUntil {
+                try Task.checkCancellation()
+                if let trac = try? TracClient.info(),
+                   trac.overall == .connecting || trac.overall == .connected {
                     return
                 }
-                typeInto(passwordField, password)
-                tap(key: 48, flags: [])
-                typedPassword = true
-                try await Task.sleep(nanoseconds: 300_000_000)
-                continue
+                try await Task.sleep(nanoseconds: 200_000_000)
+                guard let app = applicationElement() else { continue }
+                let after = capture(app)
+                if after.hasAccessDenied {
+                    dismissAccessDenied(after)
+                    break
+                }
+                if after.looksLikeChallenge || after.responseField != nil {
+                    return
+                }
+                // Still the login form with an empty password → click did not stick; retry.
+                if after.isLoginScreen {
+                    let passEmpty = after.secureFields.first.map { attr($0.element, kAXValueAttribute as String).isEmpty } ?? true
+                    if passEmpty { break }
+                }
+                if !after.isLoginScreen { return }
             }
-            if let button = snapshot.connectButton, isEnabled(button) {
-                press(button)
-                return
-            }
-            try await Task.sleep(nanoseconds: 200_000_000)
         }
         NSLog("CheckpointAX timeout at login:\n\(lastDump)")
         throw Error.timeout("login")
     }
 
-    static func fillChallenge(codeProvider: () -> String, timeout: TimeInterval = 10) async throws {
+    private static func submitLoginViaAX(snapshot: Snapshot, username: String, password: String) -> Bool {
+        if let userField = snapshot.usernameField {
+            typeInto(userField, username)
+        }
+        guard let passwordField = snapshot.passwordField ?? snapshot.secureFields.first?.element else {
+            return false
+        }
+        typeInto(passwordField, password)
+        usleep(200_000)
+        if let button = snapshot.connectButton, isEnabled(button) {
+            press(button)
+            return true
+        }
+        // Localized / laggy enable: try Return.
+        tap(key: 36, flags: [])
+        return true
+    }
+
+    static func fillChallenge(
+        expectedDigits: Int = 6,
+        maxAttempts: Int = 3,
+        timeout: TimeInterval = 20,
+        codeProvider: () -> String
+    ) async throws {
         guard isTrusted(prompt: true) else { throw Error.notTrusted }
         let deadline = Date().addingTimeInterval(timeout)
-        var typed = false
         var lastDump = ""
-        while Date() < deadline {
+        var attempts = 0
+
+        while Date() < deadline, attempts < maxAttempts {
             try Task.checkCancellation()
             activate()
             guard let app = applicationElement() else {
-                try await Task.sleep(nanoseconds: 200_000_000)
+                try await Task.sleep(nanoseconds: 150_000_000)
                 continue
             }
-            let snapshot = capture(app)
+            var snapshot = capture(app)
             lastDump = dump(app, indent: 0)
+
+            if snapshot.hasAccessDenied {
+                dismissAccessDenied(snapshot)
+                try await Task.sleep(nanoseconds: 350_000_000)
+                continue
+            }
             if snapshot.isLoginScreen {
-                try await Task.sleep(nanoseconds: 250_000_000)
+                // Bounced back to login after OTP → auth failed; retry with a fresh code only if we already submitted.
+                if attempts > 0 {
+                    // Need a full re-login; signal caller by throwing a distinct path — ConnectEngine will re-enter login.
+                    throw Error.timeout("challenge-back-to-login")
+                }
+                try await Task.sleep(nanoseconds: 150_000_000)
                 continue
             }
             guard snapshot.looksLikeChallenge || snapshot.responseField != nil || snapshot.textFields.count == 1 else {
+                try await Task.sleep(nanoseconds: 150_000_000)
+                continue
+            }
+
+            let code = codeProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard code.count == expectedDigits else {
+                try await Task.sleep(nanoseconds: 200_000_000)
+                continue
+            }
+
+            let submitted = submitChallenge(
+                snapshot: snapshot,
+                code: code,
+                expectedDigits: expectedDigits
+            )
+            guard submitted else {
                 try await Task.sleep(nanoseconds: 250_000_000)
                 continue
             }
-            if !typed {
-                let code = codeProvider()
-                if challengeViaSystemEvents(code: code) {
+            attempts += 1
+
+            // One successful click is enough unless Access Denied shows up.
+            let watchUntil = Date().addingTimeInterval(2.5)
+            while Date() < watchUntil {
+                try Task.checkCancellation()
+                if let trac = try? TracClient.info(),
+                   trac.overall == .connecting || trac.overall == .connected {
                     return
                 }
-                let field = snapshot.responseField
-                    ?? snapshot.secureFields.last?.element
-                    ?? snapshot.textFields.last?.element
-                if let field {
-                    typeInto(field, code)
-                    tap(key: 48, flags: [])
+                try await Task.sleep(nanoseconds: 200_000_000)
+                guard let app = applicationElement() else { continue }
+                snapshot = capture(app)
+                if snapshot.hasAccessDenied {
+                    dismissAccessDenied(snapshot)
+                    // Fresh OTP on next outer-loop attempt.
+                    break
                 }
-                typed = true
-                try await Task.sleep(nanoseconds: 300_000_000)
-                continue
+                // OTP rejected → back on username/password. Don't treat as success.
+                if snapshot.isLoginScreen {
+                    throw Error.timeout("challenge-back-to-login")
+                }
+                if !(snapshot.looksLikeChallenge || snapshot.responseField != nil || snapshot.textFields.count == 1) {
+                    return
+                }
             }
-            if let button = snapshot.connectButton ?? snapshot.okButton, isEnabled(button) {
-                press(button)
-                return
-            }
-            try await Task.sleep(nanoseconds: 200_000_000)
+            if snapshot.hasAccessDenied { continue }
+            // Challenge window often stays open while trac connects — stop typing and let ConnectEngine poll.
+            return
         }
         NSLog("CheckpointAX timeout at challenge:\n\(lastDump)")
         throw Error.timeout("challenge")
+    }
+
+    /// Type OTP once and press Connect. Secure fields hide their value — never treat that as a short code.
+    private static func submitChallenge(snapshot: Snapshot, code: String, expectedDigits: Int) -> Bool {
+        if challengeViaSystemEvents(code: code) {
+            return true
+        }
+        guard let field = snapshot.responseField
+            ?? snapshot.secureFields.last?.element
+            ?? snapshot.textFields.last?.element else {
+            return false
+        }
+        typeInto(field, code)
+        usleep(150_000)
+        // Readable fields only: if we can see a partial value, retype once.
+        let visible = attr(field, kAXValueAttribute as String).filter(\.isNumber)
+        if !visible.isEmpty, visible.count != expectedDigits {
+            typeInto(field, code)
+            usleep(150_000)
+        }
+        if let button = snapshot.connectButton ?? snapshot.okButton, isEnabled(button) {
+            press(button)
+            return true
+        }
+        tap(key: 36, flags: []) // Return
+        return true
     }
 
     static func dumpTree() -> String {
@@ -173,6 +294,7 @@ enum CheckpointAX {
         var connectButton: AXUIElement?
         var okButton: AXUIElement?
         var looksLikeChallenge = false
+        var hasAccessDenied = false
         var labels: [String] = []
         var isLoginScreen: Bool {
             usernameField != nil && passwordField != nil && !looksLikeChallenge
@@ -194,8 +316,8 @@ enum CheckpointAX {
         return "\"\(escaped)\""
     }
 
-    /// Check Point's login fields are named "username field" / "password field".
-    /// Setting AXValue alone does not enable Connect; System Events + keystroke does.
+    /// Check Point enables Connect only after a real keystroke into the password field.
+    /// Password is a secure text field; labels may be RU while the button stays "Connect".
     private static func loginViaSystemEvents(username: String, password: String) -> Bool {
         let user = appleQuote(username)
         let pass = appleQuote(password)
@@ -205,22 +327,45 @@ enum CheckpointAX {
             set frontmost to true
             if not (exists window 1) then return "no-window"
             tell window 1
+              -- Username: named field or first plain text field.
               try
                 set value of text field "username field" to \(user)
+              on error
+                try
+                  set value of text field 1 to \(user)
+                end try
               end try
-              set value of text field "password field" to \(pass)
-              set focused of text field "password field" to true
+              -- Password: secure text field (preferred) or named text field.
+              set passFocused to false
+              try
+                set focused of secure text field 1 to true
+                set passFocused to true
+              end try
+              if passFocused is false then
+                try
+                  set focused of text field "password field" to true
+                  set passFocused to true
+                end try
+              end if
+              if passFocused is false then return "no-password"
             end tell
-            delay 0.15
+            delay 0.1
             keystroke "a" using command down
             delay 0.05
             keystroke \(pass)
-            delay 0.25
-            if enabled of button "Connect" of window 1 then
-              click button "Connect" of window 1
+            delay 0.35
+            tell window 1
+              set btn to missing value
+              try
+                if enabled of button "Connect" then set btn to button "Connect"
+              end try
+              try
+                if btn is missing value and enabled of button "Подключиться" then set btn to button "Подключиться"
+              end try
+              if btn is missing value then return "disabled"
+              click btn
               return "clicked"
-            end if
-            return "disabled"
+            end tell
           end tell
         end tell
         """
@@ -238,23 +383,32 @@ enum CheckpointAX {
               set n to count of text fields
               if n is 0 then return "no-field"
               set fld to text field n
-              set value of fld to \(otp)
               set focused of fld to true
             end tell
-            delay 0.15
+            delay 0.08
             keystroke "a" using command down
             delay 0.05
             keystroke \(otp)
             delay 0.25
-            if enabled of button "Connect" of window 1 then
-              click button "Connect" of window 1
-              return "clicked"
-            end if
+            tell window 1
+              if enabled of button "Connect" then
+                click button "Connect"
+                return "clicked"
+              end if
+            end tell
             return "disabled"
           end tell
         end tell
         """
         return runAppleScript(source) == "clicked"
+    }
+
+    private static func dismissAccessDenied(_ snapshot: Snapshot) {
+        if let ok = snapshot.okButton {
+            press(ok)
+            return
+        }
+        tap(key: 53, flags: []) // Escape
     }
 
     private static func runningApp() -> NSRunningApplication? {
@@ -303,6 +457,9 @@ enum CheckpointAX {
             if snapshot.responseField == nil {
                 snapshot.responseField = snapshot.textFields.last?.element ?? snapshot.secureFields.last?.element
             }
+        }
+        if snapshot.labels.contains(where: looksLikeAccessDenied) {
+            snapshot.hasAccessDenied = true
         }
         if snapshot.connectButton == nil {
             snapshot.connectButton = snapshot.buttons.first(where: { isConnectTitle($0.title) })?.element
@@ -391,6 +548,24 @@ enum CheckpointAX {
         return looksLikeOTP(t) || t.contains("response") || t.contains("challenge") || t.contains("ответ") || t.contains("token")
     }
 
+    static func looksLikeAccessDenied(_ text: String) -> Bool {
+        let t = text.lowercased()
+        if t.contains("access denied") || t.contains("authentication failed") || t.contains("auth failed") {
+            return true
+        }
+        if t.contains("denied") && (t.contains("access") || t.contains("login") || t.contains("connection")) {
+            return true
+        }
+        if t.contains("отказ") || t.contains("запрещ") { return true }
+        if t.contains("неверн") && (t.contains("парол") || t.contains("код") || t.contains("ответ") || t.contains("данн")) {
+            return true
+        }
+        if t.contains("invalid") && (t.contains("credential") || t.contains("password") || t.contains("response") || t.contains("code")) {
+            return true
+        }
+        return false
+    }
+
     private static func isEnabled(_ element: AXUIElement) -> Bool {
         var value: AnyObject?
         let status = AXUIElementCopyAttributeValue(element, kAXEnabledAttribute as CFString, &value)
@@ -444,6 +619,8 @@ enum CheckpointAX {
                 up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
                 up.post(tap: .cghidEventTap)
             }
+            // Small gap so Check Point does not drop digits under load.
+            usleep(12_000)
         }
     }
 

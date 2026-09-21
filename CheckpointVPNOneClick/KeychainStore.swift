@@ -3,13 +3,15 @@ import Security
 
 enum KeychainStore {
     static let service = "local.checkpointvpn.oneclick"
-    static let passwordAccount = "vpn-password"
-    static let totpAccount = "totp-secret"
-    static let totpVaultAccount = "totp-accounts"
+    /// Legacy global keys — migrated onto the first selected site.
+    static let legacyPasswordAccount = "vpn-password"
+    static let legacyTOTPAccount = "totp-secret"
+    static let legacyTOTPVaultAccount = "totp-accounts"
 
     enum Error: Swift.Error, LocalizedError {
         case unexpected(OSStatus)
         case notPersisted
+        case missingSite
 
         var errorDescription: String? {
             switch self {
@@ -17,73 +19,70 @@ enum KeychainStore {
                 return SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)"
             case .notPersisted:
                 return "Could not save the secret. Try Save secrets again."
+            case .missingSite:
+                return "Pick a Check Point site first."
             }
         }
     }
 
     private static let lock = NSLock()
     private static var cache: [String: String] = [:]
+    private static var didPurgeSystemKeychain = false
 
-    static func password() throws -> String? { try cached(passwordAccount) }
-    static func totpSecret() throws -> String? { try selectedTOTP()?.secret }
+    static func password(site: String) throws -> String? {
+        try cached(passwordAccount(for: site))
+    }
 
-    static func totpAccounts() throws -> [TOTP.Account] { try loadVault().accounts }
+    static func totpSecret(site: String) throws -> String? {
+        try cached(totpAccount(for: site))
+    }
 
-    static func selectedTOTP() throws -> TOTP.Account? {
-        let vault = try loadVault()
-        if let id = vault.selectedID, let match = vault.accounts.first(where: { $0.id == id }) {
-            return match
+    static func setPassword(_ value: String, site: String) throws {
+        try write(account: passwordAccount(for: site), value: value)
+    }
+
+    static func setTOTPSecret(_ value: String, site: String) throws {
+        try write(account: totpAccount(for: site), value: value)
+    }
+
+    static func hasPassword(site: String) -> Bool {
+        (try? password(site: site))?.isEmpty == false
+    }
+
+    static func hasTOTPSecret(site: String) -> Bool {
+        (try? totpSecret(site: site))?.isEmpty == false
+    }
+
+    /// Move old global / multi-TOTP vault secrets onto `site` once.
+    static func migrateLegacySecretsIfNeeded(to site: String) throws {
+        purgeSystemKeychainOnce()
+        let site = site.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !site.isEmpty else { return }
+
+        if !hasPassword(site: site), let old = try cached(legacyPasswordAccount), !old.isEmpty {
+            try setPassword(old, site: site)
+            delete(account: legacyPasswordAccount)
         }
-        return vault.accounts.first
-    }
 
-    static func addTOTP(secret: String, name: String) throws {
-        var vault = try loadVault()
-        if let existing = vault.accounts.first(where: { sameSecret($0.secret, secret) }) {
-            vault.selectedID = existing.id
-            try saveVault(vault)
-            return
+        if !hasTOTPSecret(site: site) {
+            if let vaultRaw = try cached(legacyTOTPVaultAccount),
+               let data = vaultRaw.data(using: .utf8),
+               let vault = try? JSONDecoder().decode(LegacyVault.self, from: data) {
+                let picked = vault.accounts.first(where: { $0.id == vault.selectedID })
+                    ?? vault.accounts.first
+                if let secret = picked?.secret, !secret.isEmpty {
+                    try setTOTPSecret(secret, site: site)
+                }
+                delete(account: legacyTOTPVaultAccount)
+            } else if let old = try cached(legacyTOTPAccount), !old.isEmpty {
+                try setTOTPSecret(old, site: site)
+                delete(account: legacyTOTPAccount)
+            }
+        } else {
+            delete(account: legacyTOTPVaultAccount)
+            delete(account: legacyTOTPAccount)
         }
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let account = TOTP.Account(
-            id: UUID().uuidString,
-            name: trimmedName.isEmpty ? TOTP.defaultName(from: secret) : trimmedName,
-            secret: secret
-        )
-        vault.accounts.append(account)
-        vault.selectedID = account.id
-        try saveVault(vault)
     }
-
-    static func renameTOTP(id: String, name: String) throws {
-        var vault = try loadVault()
-        guard let index = vault.accounts.firstIndex(where: { $0.id == id }) else { return }
-        vault.accounts[index].name = name
-        try saveVault(vault)
-    }
-
-    static func selectTOTP(id: String) throws {
-        var vault = try loadVault()
-        guard vault.accounts.contains(where: { $0.id == id }) else { return }
-        vault.selectedID = id
-        try saveVault(vault)
-    }
-
-    static func deleteTOTP(id: String) throws {
-        var vault = try loadVault()
-        vault.accounts.removeAll { $0.id == id }
-        if vault.selectedID == id {
-            vault.selectedID = vault.accounts.first?.id
-        }
-        try saveVault(vault)
-    }
-
-    static func setPassword(_ value: String) throws { try write(account: passwordAccount, value: value) }
-
-    static func deletePassword() { delete(account: passwordAccount) }
-
-    static func hasPassword() -> Bool { (try? password())?.isEmpty == false }
-    static func hasTOTPSecret() -> Bool { (try? totpAccounts())?.isEmpty == false }
 
     static func dropCacheForTests() {
         lock.lock()
@@ -101,47 +100,32 @@ enum KeychainStore {
         guard read == value else { throw Error.notPersisted }
     }
 
-    private static func loadVault() throws -> TOTP.Vault {
-        if let raw = try cached(totpVaultAccount),
-           let data = raw.data(using: .utf8),
-           let vault = try? JSONDecoder().decode(TOTP.Vault.self, from: data) {
-            return normalized(vault)
-        }
-        if let old = try cached(totpAccount), !old.isEmpty {
-            let account = TOTP.Account(
-                id: UUID().uuidString,
-                name: TOTP.defaultName(from: old),
-                secret: old
-            )
-            let vault = TOTP.Vault(accounts: [account], selectedID: account.id)
-            try saveVault(vault)
-            delete(account: totpAccount)
-            return vault
-        }
-        return TOTP.Vault(accounts: [], selectedID: nil)
+    static func passwordAccount(for site: String) throws -> String {
+        "password:\(try normalizedSite(site))"
     }
 
-    private static func normalized(_ vault: TOTP.Vault) -> TOTP.Vault {
-        var vault = vault
-        if vault.selectedID == nil || !vault.accounts.contains(where: { $0.id == vault.selectedID }) {
-            vault.selectedID = vault.accounts.first?.id
+    static func totpAccount(for site: String) throws -> String {
+        "totp:\(try normalizedSite(site))"
+    }
+
+    static func normalizedSite(_ site: String) throws -> String {
+        let trimmed = site.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw Error.missingSite }
+        return trimmed
+    }
+
+    private struct LegacyVault: Codable {
+        struct Account: Codable {
+            var id: String
+            var name: String
+            var secret: String
         }
-        return vault
-    }
-
-    private static func saveVault(_ vault: TOTP.Vault) throws {
-        let data = try JSONEncoder().encode(normalized(vault))
-        guard let raw = String(data: data, encoding: .utf8) else { throw Error.notPersisted }
-        try write(account: totpVaultAccount, value: raw)
-    }
-
-    private static func sameSecret(_ a: String, _ b: String) -> Bool {
-        if a == b { return true }
-        guard let left = try? TOTP.parseSecret(a), let right = try? TOTP.parseSecret(b) else { return false }
-        return left.key == right.key && left.period == right.period && left.digits == right.digits
+        var accounts: [Account]
+        var selectedID: String?
     }
 
     private static func cached(_ account: String) throws -> String? {
+        purgeSystemKeychainOnce()
         lock.lock()
         if let hit = cache[account] {
             lock.unlock()
@@ -155,38 +139,20 @@ enum KeychainStore {
         return value
     }
 
+    // ponytail: ad-hoc rebuilds change the CDHash → login Keychain prompts on every SecItem read.
+    // Ceiling until a real Team ID: secrets.plist 0600 only. System Keychain is abandoned.
     private static func readAny(account: String) throws -> String? {
-        if let keychain = try readKeychain(account: account) { return keychain }
-        return try sidecar()[account]
-    }
-
-    private static func readKeychain(account: String) throws -> String? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound || status == errSecMissingEntitlement { return nil }
-        guard status == errSecSuccess else { throw Error.unexpected(status) }
-        guard let data = item as? Data, let value = String(data: data, encoding: .utf8), !value.isEmpty else {
-            return nil
-        }
-        return value
+        try sidecar()[account]
     }
 
     private static func write(account: String, value: String) throws {
+        purgeSystemKeychainOnce()
         guard !value.isEmpty else {
             delete(account: account)
             return
         }
 
-        if !writeKeychain(account: account, value: value) {
-            try writeSidecar(account: account, value: value)
-        }
+        try writeSidecar(account: account, value: value)
         dropCacheForTests()
         guard try readAny(account: account) == value else { throw Error.notPersisted }
         lock.lock()
@@ -194,23 +160,6 @@ enum KeychainStore {
         lock.unlock()
     }
 
-    /// Returns false when this Mac refuses the item (typical without an Apple Team ID).
-    private static func writeKeychain(account: String, value: String) -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = Data(value.utf8)
-        add[kSecAttrLabel as String] = "Checkpoint VPN"
-        let status = SecItemAdd(add as CFDictionary, nil)
-        guard status == errSecSuccess else { return false }
-        return (try? readKeychain(account: account)) == value
-    }
-
-    // ponytail: no Apple Team ID → SecItemAdd often returns -34018. secrets.plist 0600 is the ceiling until a real signing identity exists.
     private static func sidecarURL() throws -> URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/CheckpointVPNOneClick", isDirectory: true)
@@ -250,15 +199,51 @@ enum KeychainStore {
         lock.lock()
         cache[account] = ""
         lock.unlock()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
         if var all = try? sidecar() {
             all.removeValue(forKey: account)
             try? saveSidecar(all)
         }
+    }
+
+    /// Drop ACL-bound login-keychain items so macOS stops asking for the login password.
+    /// Best-effort: copy into secrets.plist first (may prompt once), then delete.
+    private static func purgeSystemKeychainOnce() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didPurgeSystemKeychain else { return }
+        didPurgeSystemKeychain = true
+
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        var result: CFTypeRef?
+        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+           let items = result as? [[String: Any]] {
+            var all = (try? sidecarUnlocked()) ?? [:]
+            for item in items {
+                guard let account = item[kSecAttrAccount as String] as? String,
+                      let data = item[kSecValueData as String] as? Data,
+                      let value = String(data: data, encoding: .utf8),
+                      !value.isEmpty else { continue }
+                if all[account] == nil || all[account]?.isEmpty == true {
+                    all[account] = value
+                }
+            }
+            try? saveSidecar(all)
+        }
+
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ] as CFDictionary)
+    }
+
+    /// Caller already holds `lock` or is single-threaded during purge.
+    private static func sidecarUnlocked() throws -> [String: String] {
+        try sidecar()
     }
 }
