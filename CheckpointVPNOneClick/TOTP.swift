@@ -12,6 +12,34 @@ enum TOTP {
         var digits: Int
     }
 
+    struct Account: Codable, Identifiable, Equatable {
+        var id: String
+        var name: String
+        var secret: String
+    }
+
+    struct Vault: Codable, Equatable {
+        var accounts: [Account]
+        var selectedID: String?
+    }
+
+    static func defaultName(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.scheme?.lowercased() == "otpauth" else {
+            return "TOTP"
+        }
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let label = path.removingPercentEncoding ?? path
+        if !label.isEmpty { return label }
+        let issuer = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name.lowercased() == "issuer" })?
+            .value?
+            .removingPercentEncoding
+        if let issuer, !issuer.isEmpty { return issuer }
+        return "TOTP"
+    }
+
     enum Error: Swift.Error, LocalizedError {
         case empty
         case badBase32

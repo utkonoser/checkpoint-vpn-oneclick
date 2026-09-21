@@ -5,6 +5,7 @@ enum KeychainStore {
     static let service = "local.checkpointvpn.oneclick"
     static let passwordAccount = "vpn-password"
     static let totpAccount = "totp-secret"
+    static let totpVaultAccount = "totp-accounts"
 
     enum Error: Swift.Error, LocalizedError {
         case unexpected(OSStatus)
@@ -24,16 +25,65 @@ enum KeychainStore {
     private static var cache: [String: String] = [:]
 
     static func password() throws -> String? { try cached(passwordAccount) }
-    static func totpSecret() throws -> String? { try cached(totpAccount) }
+    static func totpSecret() throws -> String? { try selectedTOTP()?.secret }
+
+    static func totpAccounts() throws -> [TOTP.Account] { try loadVault().accounts }
+
+    static func selectedTOTP() throws -> TOTP.Account? {
+        let vault = try loadVault()
+        if let id = vault.selectedID, let match = vault.accounts.first(where: { $0.id == id }) {
+            return match
+        }
+        return vault.accounts.first
+    }
+
+    static func addTOTP(secret: String, name: String) throws {
+        var vault = try loadVault()
+        if let existing = vault.accounts.first(where: { sameSecret($0.secret, secret) }) {
+            vault.selectedID = existing.id
+            try saveVault(vault)
+            return
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let account = TOTP.Account(
+            id: UUID().uuidString,
+            name: trimmedName.isEmpty ? TOTP.defaultName(from: secret) : trimmedName,
+            secret: secret
+        )
+        vault.accounts.append(account)
+        vault.selectedID = account.id
+        try saveVault(vault)
+    }
+
+    static func renameTOTP(id: String, name: String) throws {
+        var vault = try loadVault()
+        guard let index = vault.accounts.firstIndex(where: { $0.id == id }) else { return }
+        vault.accounts[index].name = name
+        try saveVault(vault)
+    }
+
+    static func selectTOTP(id: String) throws {
+        var vault = try loadVault()
+        guard vault.accounts.contains(where: { $0.id == id }) else { return }
+        vault.selectedID = id
+        try saveVault(vault)
+    }
+
+    static func deleteTOTP(id: String) throws {
+        var vault = try loadVault()
+        vault.accounts.removeAll { $0.id == id }
+        if vault.selectedID == id {
+            vault.selectedID = vault.accounts.first?.id
+        }
+        try saveVault(vault)
+    }
 
     static func setPassword(_ value: String) throws { try write(account: passwordAccount, value: value) }
-    static func setTOTPSecret(_ value: String) throws { try write(account: totpAccount, value: value) }
 
     static func deletePassword() { delete(account: passwordAccount) }
-    static func deleteTOTPSecret() { delete(account: totpAccount) }
 
     static func hasPassword() -> Bool { (try? password())?.isEmpty == false }
-    static func hasTOTPSecret() -> Bool { (try? totpSecret())?.isEmpty == false }
+    static func hasTOTPSecret() -> Bool { (try? totpAccounts())?.isEmpty == false }
 
     static func dropCacheForTests() {
         lock.lock()
@@ -49,6 +99,46 @@ enum KeychainStore {
         let read = try readAny(account: account)
         delete(account: account)
         guard read == value else { throw Error.notPersisted }
+    }
+
+    private static func loadVault() throws -> TOTP.Vault {
+        if let raw = try cached(totpVaultAccount),
+           let data = raw.data(using: .utf8),
+           let vault = try? JSONDecoder().decode(TOTP.Vault.self, from: data) {
+            return normalized(vault)
+        }
+        if let old = try cached(totpAccount), !old.isEmpty {
+            let account = TOTP.Account(
+                id: UUID().uuidString,
+                name: TOTP.defaultName(from: old),
+                secret: old
+            )
+            let vault = TOTP.Vault(accounts: [account], selectedID: account.id)
+            try saveVault(vault)
+            delete(account: totpAccount)
+            return vault
+        }
+        return TOTP.Vault(accounts: [], selectedID: nil)
+    }
+
+    private static func normalized(_ vault: TOTP.Vault) -> TOTP.Vault {
+        var vault = vault
+        if vault.selectedID == nil || !vault.accounts.contains(where: { $0.id == vault.selectedID }) {
+            vault.selectedID = vault.accounts.first?.id
+        }
+        return vault
+    }
+
+    private static func saveVault(_ vault: TOTP.Vault) throws {
+        let data = try JSONEncoder().encode(normalized(vault))
+        guard let raw = String(data: data, encoding: .utf8) else { throw Error.notPersisted }
+        try write(account: totpVaultAccount, value: raw)
+    }
+
+    private static func sameSecret(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        guard let left = try? TOTP.parseSecret(a), let right = try? TOTP.parseSecret(b) else { return false }
+        return left.key == right.key && left.period == right.period && left.digits == right.digits
     }
 
     private static func cached(_ account: String) throws -> String? {

@@ -31,6 +31,30 @@ final class TOTPTests: XCTestCase {
         _ = try TOTP.parseSecret(decoded)
     }
 
+    func testTOTPDefaultNameFromQRLabel() {
+        XCTAssertEqual(
+            TOTP.defaultName(from: "otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP"),
+            "Work:user"
+        )
+        XCTAssertEqual(
+            TOTP.defaultName(from: "otpauth://totp/Check%20Point:nn.selin?secret=JBSWY3DPEHPK3PXP"),
+            "Check Point:nn.selin"
+        )
+        XCTAssertEqual(TOTP.defaultName(from: "JBSWY3DPEHPK3PXP"), "TOTP")
+        XCTAssertEqual(
+            TOTP.defaultName(from: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP&issuer=Corp"),
+            "Corp"
+        )
+    }
+
+    func testTOTPVaultRoundTrip() throws {
+        let account = TOTP.Account(id: "1", name: "Work:user", secret: "otpauth://totp/Work:user?secret=JBSWY3DPEHPK3PXP")
+        let vault = TOTP.Vault(accounts: [account], selectedID: "1")
+        let data = try JSONEncoder().encode(vault)
+        let out = try JSONDecoder().decode(TOTP.Vault.self, from: data)
+        XCTAssertEqual(out, vault)
+    }
+
     func testKeychainPersistsAcrossCacheClear() throws {
         try KeychainStore.persistProbeForTests()
     }

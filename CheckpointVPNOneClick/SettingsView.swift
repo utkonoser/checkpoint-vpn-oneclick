@@ -37,27 +37,47 @@ struct SettingsView: View {
             }
 
             Section("Current TOTP") {
-                TOTPLiveView(hasSecret: model.hasTOTP)
+                TOTPLiveView(account: model.totpAccounts.first(where: { $0.id == model.selectedTOTPID }))
+            }
+
+            Section("TOTP codes") {
+                if model.totpAccounts.isEmpty {
+                    Text("Add a TOTP secret, otpauth:// URL, or QR. The name comes from the QR label and can be edited.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(model.totpAccounts) { account in
+                    HStack(alignment: .center, spacing: 8) {
+                        Toggle("Use \(account.name)", isOn: totpSelectedBinding(account.id))
+                            .toggleStyle(.checkbox)
+                            .labelsHidden()
+                            .help("Use this code when connecting")
+                        TextField("Name", text: totpNameBinding(account.id))
+                            .textFieldStyle(.roundedBorder)
+                        Button("Delete") { model.deleteTOTP(id: account.id) }
+                    }
+                }
+                LabeledContent("Add TOTP") {
+                    SecureField("otpauth:// or Base32", text: $totp)
+                }
+                HStack {
+                    Button("Add TOTP") { addTOTPField() }
+                        .disabled(totp.isEmpty)
+                    Button("Import QR image…") { importingQR = true }
+                    Button("Paste QR from clipboard") { importClipboardQR() }
+                }
+                if let saveMessage {
+                    Text(saveMessage).font(.caption)
+                }
             }
 
             Section("Secrets (Keychain)") {
                 LabeledContent("Password") {
                     SecureField(model.hasPassword ? "Saved" : "Required", text: $password)
                 }
-                LabeledContent("TOTP secret") {
-                    SecureField(model.hasTOTP ? "Saved" : "otpauth:// or Base32", text: $totp)
-                }
-                Text("Paste the Base32 secret, an otpauth:// URL, or import a QR screenshot. Type a new value to replace a saved one.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 HStack {
-                    Button("Save secrets") { saveSecrets() }
-                        .disabled(password.isEmpty && totp.isEmpty)
-                    Button("Import QR image…") { importingQR = true }
-                    Button("Paste QR from clipboard") { importClipboardQR() }
-                }
-                if let saveMessage {
-                    Text(saveMessage).font(.caption)
+                    Button("Save password") { saveSecrets() }
+                        .disabled(password.isEmpty)
                 }
             }
 
@@ -114,7 +134,7 @@ struct SettingsView: View {
                     Button("Disconnect") { model.disconnect() }
                         .disabled(!model.canDisconnect)
                 }
-                Text("Connect stays disabled until site, username, password, TOTP secret, and Accessibility are set.")
+                Text("Connect stays disabled until site, username, password, a TOTP code, and Accessibility are set.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -123,6 +143,7 @@ struct SettingsView: View {
         .padding(8)
         .onAppear {
             model.refreshStatus()
+            model.refreshSecrets()
             model.refreshPermissions()
             AppWindows.bringSettingsForward()
         }
@@ -137,6 +158,35 @@ struct SettingsView: View {
             names.insert(model.site, at: 0)
         }
         return names
+    }
+
+    private func totpSelectedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedTOTPID == id },
+            set: { isOn in
+                if isOn { model.selectTOTP(id: id) }
+            }
+        )
+    }
+
+    private func totpNameBinding(_ id: String) -> Binding<String> {
+        Binding(
+            get: { model.totpAccounts.first(where: { $0.id == id })?.name ?? "" },
+            set: { model.renameTOTP(id: id, name: $0) }
+        )
+    }
+
+    private func addTOTPField() {
+        let raw = totp
+        guard !raw.isEmpty else { return }
+        do {
+            try model.importTOTP(raw)
+            totp = ""
+            let name = model.totpAccounts.first(where: { $0.id == model.selectedTOTPID })?.name
+            saveMessage = name.map { "Added \($0)." } ?? "TOTP saved."
+        } catch {
+            saveMessage = error.localizedDescription
+        }
     }
 
     private func saveSecrets() {
@@ -163,9 +213,9 @@ struct SettingsView: View {
             let secret = try QRCodeImporter.decodeClipboard()
             try model.importTOTP(secret)
             totp = ""
-            saveMessage = model.hasTOTP
-                ? "TOTP secret saved in Keychain."
-                : "Import decoded, but Keychain did not keep it."
+            let name = model.totpAccounts.first(where: { $0.id == model.selectedTOTPID })?.name
+            saveMessage = name.map { "Saved \($0) in Keychain." }
+                ?? "Import decoded, but Keychain did not keep it."
         } catch {
             saveMessage = error.localizedDescription
         }
@@ -180,9 +230,9 @@ struct SettingsView: View {
             let secret = try QRCodeImporter.decode(fileURL: url)
             try model.importTOTP(secret)
             totp = ""
-            saveMessage = model.hasTOTP
-                ? "TOTP secret saved in Keychain."
-                : "Import decoded, but Keychain did not keep it."
+            let name = model.totpAccounts.first(where: { $0.id == model.selectedTOTPID })?.name
+            saveMessage = name.map { "Saved \($0) in Keychain." }
+                ?? "Import decoded, but Keychain did not keep it."
         } catch {
             saveMessage = error.localizedDescription
         }
@@ -190,12 +240,18 @@ struct SettingsView: View {
 }
 
 private struct TOTPLiveView: View {
-    var hasSecret: Bool
+    var account: TOTP.Account?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let tick = Self.read(at: context.date)
+            let tick = Self.read(account, at: context.date)
             VStack(alignment: .leading, spacing: 8) {
+                if let account {
+                    let title = account.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    Text(title.isEmpty ? TOTP.defaultName(from: account.secret) : title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack(alignment: .firstTextBaseline) {
                     Text(tick.code)
                         .font(.system(size: 34, weight: .semibold, design: .monospaced))
@@ -208,7 +264,7 @@ private struct TOTPLiveView: View {
                             .frame(width: 90)
                     }
                 }
-                if !hasSecret {
+                if account == nil {
                     Text("Save a TOTP secret to see the live code.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -217,8 +273,8 @@ private struct TOTPLiveView: View {
         }
     }
 
-    private static func read(at date: Date) -> (code: String, secondsLeft: Int, period: Int) {
-        guard let raw = try? KeychainStore.totpSecret(),
+    private static func read(_ account: TOTP.Account?, at date: Date) -> (code: String, secondsLeft: Int, period: Int) {
+        guard let raw = account?.secret,
               let secret = try? TOTP.parseSecret(raw) else {
             return ("------", 0, 30)
         }

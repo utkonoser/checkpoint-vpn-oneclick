@@ -24,7 +24,7 @@ Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcode
 2. System Settings → Privacy & Security → **Accessibility** → enable Checkpoint VPN.
 3. Quit from the menu bar and open the app again.
 4. Allow **System Events** if macOS asks (Automation).
-5. Settings: site, username, VPN password, TOTP secret (Base32, `otpauth://`, or QR).
+5. Settings: site, username, VPN password, one or more TOTP codes (Base32, `otpauth://`, or QR). Check the one to use; the name defaults to the QR label.
 6. Connect from the menu bar or Settings.
 
 If Red Shield VPN is installed, a **Red Shield** switch appears in the menu and Settings: it disconnects Check Point and connects Red Shield, or the reverse. Without that app the switch is hidden and nothing else changes.

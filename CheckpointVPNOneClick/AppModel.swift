@@ -12,6 +12,8 @@ final class AppModel: ObservableObject {
     @Published var isBusy = false
     @Published var hasPassword = false
     @Published var hasTOTP = false
+    @Published var totpAccounts: [TOTP.Account] = []
+    @Published var selectedTOTPID = ""
     @Published var accessibilityTrusted = false
     @Published var redShieldInstalled = false
     @Published var redShieldConnected = false
@@ -78,7 +80,9 @@ final class AppModel: ObservableObject {
 
     func refreshSecrets() {
         hasPassword = KeychainStore.hasPassword()
-        hasTOTP = KeychainStore.hasTOTPSecret()
+        totpAccounts = (try? KeychainStore.totpAccounts()) ?? []
+        selectedTOTPID = (try? KeychainStore.selectedTOTP()?.id) ?? totpAccounts.first?.id ?? ""
+        hasTOTP = !totpAccounts.isEmpty
         refreshPermissions()
     }
 
@@ -107,7 +111,23 @@ final class AppModel: ObservableObject {
 
     func importTOTP(_ raw: String) throws {
         let normalized = try QRCodeImporter.normalizedSecret(raw)
-        try KeychainStore.setTOTPSecret(normalized)
+        try KeychainStore.addTOTP(secret: normalized, name: TOTP.defaultName(from: normalized))
+        refreshSecrets()
+    }
+
+    func selectTOTP(id: String) {
+        try? KeychainStore.selectTOTP(id: id)
+        refreshSecrets()
+    }
+
+    func renameTOTP(id: String, name: String) {
+        guard let index = totpAccounts.firstIndex(where: { $0.id == id }) else { return }
+        totpAccounts[index].name = name
+        try? KeychainStore.renameTOTP(id: id, name: name)
+    }
+
+    func deleteTOTP(id: String) {
+        try? KeychainStore.deleteTOTP(id: id)
         refreshSecrets()
     }
 
