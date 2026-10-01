@@ -13,7 +13,7 @@ struct CheckpointVPNOneClickApp: App {
             Image(model.menuBarImageName)
                 .renderingMode(.template)
                 .id(model.menuBarImageName)
-                .accessibilityLabel(model.menuBarConnected ? "Connected" : model.snapshot.overall.title)
+                .accessibilityLabel(model.menuBarConnected ? "Connected" : model.vpnState.title)
         }
         .menuBarExtraStyle(.menu)
 
@@ -127,17 +127,17 @@ struct MenuContent: View {
     private var statusLine: String {
         if model.isBusy {
             if model.redShieldConnected { return "Working… Red Shield" }
-            let site = model.site.isEmpty ? (model.snapshot.active?.name ?? "…") : model.site
+            let site = model.site.isEmpty ? "…" : model.site
             return "Working… \(site)"
         }
-        if model.snapshot.overall == .connected {
-            let site = model.snapshot.active?.name ?? model.site
+        if model.vpnState == .connected {
+            let site = model.snxStatus.serverName ?? model.site
             return "Connected — \(site)"
         }
         if model.redShieldConnected {
             return "Connected — Red Shield"
         }
-        let site = model.site.isEmpty ? (model.snapshot.active?.name ?? "…") : model.site
-        return "\(model.snapshot.overall.title) — \(site)"
+        let site = model.site.isEmpty ? "…" : model.site
+        return "\(model.vpnState.title) — \(site)"
     }
 }

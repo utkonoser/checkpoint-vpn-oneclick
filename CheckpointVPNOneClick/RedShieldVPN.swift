@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -21,6 +22,14 @@ enum RedShieldVPN {
                 return "Timed out waiting for Red Shield (\(step))."
             }
         }
+    }
+
+    static func isTrusted(prompt: Bool) -> Bool {
+        let options: NSDictionary = [
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue(): prompt,
+        ]
+        if AXIsProcessTrustedWithOptions(options) { return true }
+        return AXIsProcessTrusted()
     }
 
     static func isInstalled(at path: String = defaultAppPath, fileManager: FileManager = .default) -> Bool {
@@ -57,7 +66,7 @@ enum RedShieldVPN {
 
     static func setConnected(_ want: Bool, timeout: TimeInterval = 20) async throws {
         guard isInstalled() else { throw Error.notInstalled }
-        guard CheckpointAX.isTrusted(prompt: true) else { throw Error.notTrusted }
+        guard isTrusted(prompt: true) else { throw Error.notTrusted }
         _ = try await ensureRunning()
         try await Task.sleep(nanoseconds: 250_000_000)
         if tunnelIsUp() == want { return }

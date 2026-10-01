@@ -33,7 +33,7 @@ targets:
         INFOPLIST_KEY_LSUIElement: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
-        INFOPLIST_KEY_NSAppleEventsUsageDescription: Fills Check Point VPN login fields with the saved password and TOTP.
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Optional Automation for system dialogs.
         CODE_SIGN_ENTITLEMENTS: CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
@@ -46,7 +46,7 @@ targets:
       path: CheckpointVPNOneClick/Info.plist
       properties:
         LSUIElement: true
-        NSAppleEventsUsageDescription: Fills Check Point VPN login fields with the saved password and TOTP.
+        NSAppleEventsUsageDescription: Optional Automation for system dialogs.
     entitlements:
       path: CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements
       properties:

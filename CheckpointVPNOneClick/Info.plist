@@ -21,6 +21,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Fills Check Point VPN login fields with the saved password and TOTP.</string>
+	<string>Optional Automation for system dialogs.</string>
 </dict>
 </plist>

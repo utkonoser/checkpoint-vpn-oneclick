@@ -14,12 +14,12 @@ struct SettingsView: View {
                 Toggle("Red Shield", isOn: model.redShieldToggle)
                     .disabled(model.isBusy || !model.redShieldInstalled)
                 Text(model.redShieldInstalled
-                     ? "Swaps Check Point and Red Shield."
+                     ? "Swaps Check Point (snx-rs) and Red Shield."
                      : "Install Red Shield VPN in /Applications to enable this switch.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if model.siteChoices.isEmpty {
-                    TextField("Site", text: siteBinding)
+                    TextField("Site (hostname)", text: siteBinding)
                         .textFieldStyle(.roundedBorder)
                 } else {
                     Picker("Site", selection: siteBinding) {
@@ -28,15 +28,29 @@ struct SettingsView: View {
                         }
                     }
                     if !model.siteChoices.contains(model.site) {
-                        TextField("Site", text: siteBinding)
+                        TextField("Site (hostname)", text: siteBinding)
                             .textFieldStyle(.roundedBorder)
                     }
                 }
-                Text("Password and TOTP are saved per Check Point site.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 TextField("Username", text: $model.username)
                     .textFieldStyle(.roundedBorder)
+                TextField("Login type", text: $model.snxLoginType)
+                    .textFieldStyle(.roundedBorder)
+                Text("Login type comes from `snx-rs -m info -s <host>` (e.g. vpn_VPN_RA). Password and TOTP are per site.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("snx-rs") {
+                LabeledContent("Installed") {
+                    Text(model.snxInstalled ? "Yes" : "Missing")
+                        .foregroundStyle(model.snxInstalled ? .green : .orange)
+                }
+                if !model.snxInstalled {
+                    Text("Install SNX-RS.pkg from https://github.com/ancwrd1/snx-rs/releases (includes snxctl + LaunchDaemon). If the official Check Point client is also installed, disconnect it manually before connecting here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Current TOTP") {
@@ -64,46 +78,32 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Permissions") {
-                LabeledContent("Accessibility") {
-                    Text(model.accessibilityTrusted ? "Granted" : "Required")
-                        .foregroundStyle(model.accessibilityTrusted ? .green : .orange)
-                }
-                if !model.accessibilityTrusted {
-                    if model.isRunningFromInstall {
-                        Text("Turn on Checkpoint VPN in Accessibility, then Quit from the menu bar and open ~/Applications/CheckpointVPNOneClick.app again. macOS keeps this as Required until that restart.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("This is a throwaway build. Quit it and open ~/Applications/CheckpointVPNOneClick.app, then grant Accessibility to that copy.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            if model.redShieldInstalled {
+                Section("Red Shield permissions") {
+                    LabeledContent("Accessibility") {
+                        Text(model.accessibilityTrusted ? "Granted" : "Required")
+                            .foregroundStyle(model.accessibilityTrusted ? .green : .orange)
                     }
-                }
-                Text(model.runningPath)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                HStack {
-                    Button("Request Accessibility") { model.requestAccessibility() }
-                    Button("Recheck") { model.refreshPermissions() }
-                }
-                HStack {
-                    Button("Open Accessibility settings") { model.openAccessibilitySettings() }
-                    Button("Allow System Events") { model.requestAutomation() }
+                    Text("Needed only to click Connect/Disconnect in Red Shield VPN.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Request Accessibility") { model.requestAccessibility() }
+                        Button("Open Accessibility settings") { model.openAccessibilitySettings() }
+                    }
                 }
             }
 
             Section("Connect") {
                 LabeledContent("State") {
                     Text(model.isBusy ? "Working…" : (
-                        model.redShieldConnected && model.snapshot.overall != .connected
+                        model.redShieldConnected && model.vpnState != .connected
                             ? "Connected — Red Shield"
-                            : model.snapshot.overall.title
+                            : model.vpnState.title
                     ))
                 }
-                if let active = model.snapshot.active {
-                    LabeledContent("Active site", value: active.name)
+                if model.vpnState == .connected {
+                    LabeledContent("Active site", value: model.snxStatus.serverName ?? model.site)
                 }
                 if let error = model.lastError, !error.isEmpty {
                     Text(error)
@@ -117,7 +117,9 @@ struct SettingsView: View {
                     Button("Disconnect") { model.disconnect() }
                         .disabled(!model.canDisconnect)
                 }
-                Text("Connect stays disabled until site, username, password, TOTP secret, and Accessibility are set.")
+                Text(model.snxInstalled
+                     ? "Connect needs site, username, login type, password, and TOTP. Disconnect uses the local snx-rs daemon (works even if the gateway is unreachable)."
+                     : "Install snx-rs first — Connect stays disabled until snxctl is available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -151,6 +153,7 @@ struct SettingsView: View {
         do {
             let site = model.site.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !site.isEmpty else { throw KeychainStore.Error.missingSite }
+            model.rememberSite(site)
             if !password.isEmpty {
                 try KeychainStore.setPassword(password, site: site)
                 password = ""
@@ -175,7 +178,7 @@ struct SettingsView: View {
             totp = ""
             saveMessage = model.hasTOTP
                 ? "TOTP secret saved for \(model.site)."
-                : "Import decoded, but Keychain did not keep it."
+                : "Import decoded, but store did not keep it."
         } catch {
             saveMessage = error.localizedDescription
         }
@@ -192,7 +195,7 @@ struct SettingsView: View {
             totp = ""
             saveMessage = model.hasTOTP
                 ? "TOTP secret saved for \(model.site)."
-                : "Import decoded, but Keychain did not keep it."
+                : "Import decoded, but store did not keep it."
         } catch {
             saveMessage = error.localizedDescription
         }

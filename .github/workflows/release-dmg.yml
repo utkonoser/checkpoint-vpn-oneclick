@@ -35,5 +35,5 @@ jobs:
           tag="${{ inputs.tag }}"
           gh release create "$tag" build/CheckpointVPNOneClick-*.dmg \
             --title "Checkpoint VPN One-Click $tag" \
-            --notes "Ad-hoc signed macOS 14+ universal DMG. First launch: right-click the app → Open (Gatekeeper). Accessibility may need to be re-enabled after an update." \
+            --notes "Ad-hoc signed macOS 14+ universal DMG. Requires snx-rs (SNX-RS.pkg). First launch: right-click the app → Open (Gatekeeper). Red Shield users may need Accessibility after an update." \
             --latest

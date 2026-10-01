@@ -41,24 +41,53 @@ final class TOTPTests: XCTestCase {
         try KeychainStore.persistProbeForTests()
     }
 
-    func testParseInfo() {
+    func testParseSnxStatusConnected() {
         let raw = """
-        Trac connections:
-
-        Conn vpn.example.com:
-        \tgw: 1.2.3.4
-        \tstatus: Idle
-        \tactive site: false
-
-        Conn vpn-backup.example.com:
-        \tgw: 5.6.7.8
-        \tstatus: Connected
-        \tactive site: true
+             Server name: vpn.rutube-net.ru
+             User name: nn.selin
+             IP address: 10.1.2.3
+             Connected since: Wed Oct  1 09:00:00 2025
         """
-        let snapshot = TracClient.parseInfo(raw)
-        XCTAssertEqual(snapshot.sites.count, 2)
-        XCTAssertEqual(snapshot.active?.name, "vpn-backup.example.com")
-        XCTAssertEqual(snapshot.overall, .connected)
+        let status = SnxClient.parseStatus(raw)
+        XCTAssertEqual(status.state, .connected)
+        XCTAssertEqual(status.serverName, "vpn.rutube-net.ru")
+        XCTAssertEqual(status.userName, "nn.selin")
+        XCTAssertEqual(status.ipAddress, "10.1.2.3")
+    }
+
+    func testParseSnxStatusIdle() {
+        let status = SnxClient.parseStatus("Tunnel error: unsuccessful client response")
+        XCTAssertEqual(status.state, .idle)
+    }
+
+    func testParseDaemonStatusJSON() throws {
+        let disconnected = try JSONSerialization.jsonObject(
+            with: Data(#"{"ConnectionStatus":"Disconnected"}"#.utf8)
+        )
+        XCTAssertEqual(SnxClient.parseDaemonStatus(disconnected).state, .idle)
+
+        let connecting = try JSONSerialization.jsonObject(
+            with: Data(#"{"ConnectionStatus":"Connecting"}"#.utf8)
+        )
+        XCTAssertEqual(SnxClient.parseDaemonStatus(connecting).state, .connecting)
+
+        let connected = try JSONSerialization.jsonObject(with: Data("""
+        {"ConnectionStatus":{"Connected":{"server_name":"vpn.example.com","username":"alice","ip_address":"10.0.0.5/32","login_type":"vpn_VPN_RA","tunnel_type":"IPsec","transport_type":"Auto","dns_servers":[],"search_domains":[],"interface_name":"utun4","dns_configured":true,"routing_configured":true,"default_route":false,"profile_id":"38703862-805c-441c-922e-ee45eaf2bb5e","profile_name":"Default","live":{},"ike_state":null,"since":"2025-10-01T09:00:00+03:00"}}}
+        """.utf8))
+        let status = SnxClient.parseDaemonStatus(connected)
+        XCTAssertEqual(status.state, .connected)
+        XCTAssertEqual(status.serverName, "vpn.example.com")
+        XCTAssertEqual(status.userName, "alice")
+        XCTAssertEqual(status.ipAddress, "10.0.0.5/32")
+    }
+
+    func testParseSnxLoginTypes() {
+        let raw = """
+        Available login types:
+        [0] vpn_VPN_RA: Certificate authentication for Remote Access
+        [1] vpn_Something: Other
+        """
+        XCTAssertEqual(SnxClient.parseLoginTypes(raw), ["vpn_VPN_RA", "vpn_Something"])
     }
 
     func testRedShieldInstalledOnlyWhenPathExists() throws {
@@ -71,32 +100,5 @@ final class TOTPTests: XCTestCase {
         try FileManager.default.createDirectory(at: present, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: present) }
         XCTAssertTrue(RedShieldVPN.isInstalled(at: present.path))
-    }
-
-    func testAccessDeniedDetection() {
-        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Access Denied"))
-        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Authentication failed"))
-        XCTAssertTrue(CheckpointAX.looksLikeAccessDenied("Invalid credentials"))
-        XCTAssertFalse(CheckpointAX.looksLikeAccessDenied("One-time password"))
-        XCTAssertFalse(CheckpointAX.looksLikeAccessDenied("Connect"))
-    }
-
-    func testConnectPollGivesUpWhenIdle() {
-        XCTAssertEqual(
-            ConnectPoll.step(overall: .connected, sawConnecting: false, idleTicks: 0),
-            .connected
-        )
-        XCTAssertEqual(
-            ConnectPoll.step(overall: .idle, sawConnecting: true, idleTicks: 1),
-            .failed("VPN dropped back to Idle")
-        )
-        XCTAssertEqual(
-            ConnectPoll.step(overall: .idle, sawConnecting: false, idleTicks: ConnectPoll.idleGiveUpTicks),
-            .failed("VPN stayed Idle")
-        )
-        XCTAssertEqual(
-            ConnectPoll.step(overall: .connecting, sawConnecting: false, idleTicks: 20),
-            .wait
-        )
     }
 }
