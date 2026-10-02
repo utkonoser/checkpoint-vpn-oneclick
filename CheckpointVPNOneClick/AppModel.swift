@@ -7,6 +7,8 @@ final class AppModel: ObservableObject {
     @AppStorage("site") var site: String = ""
     @AppStorage("username") var username: String = ""
     @AppStorage("snxLoginType") var snxLoginType: String = SnxClient.defaultLoginType
+    /// Corporate gateways often fail snx-rs internal IPsec CA checks without this.
+    @AppStorage("snxIgnoreServerCert") var snxIgnoreServerCert: Bool = true
     @AppStorage("knownSites") private var knownSitesRaw: String = ""
 
     @Published var snxStatus = SnxStatus.disconnected
@@ -20,6 +22,9 @@ final class AppModel: ObservableObject {
     @Published var redShieldConnected = false
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    /// Avoid stacking admin password prompts (launch + wake within a minute).
+    private var lastDaemonRestartAt: Date?
 
     static var installPath: String {
         NSHomeDirectory() + "/Applications/CheckpointVPNOneClick.app"
@@ -66,6 +71,88 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.refreshStatus()
                 self?.refreshPermissions()
+            }
+        }
+        // After lid-close the snx-rs daemon keeps a dead tunnel; drop it on wake so the next
+        // Connect starts clean (avoids stale IPsec / certificate / 503 MFA failures).
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleWake()
+            }
+        }
+        // Same idea as `sudo pkill snx-rs`: if an idle daemon is already running at launch,
+        // restart it once (admin password) so Connect is not stuck on a half-dead process.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            self.restartStaleDaemonIfNeeded(reason: "launch")
+        }
+    }
+
+    private func handleWake() {
+        guard snxInstalled, !isBusy else {
+            refreshStatus()
+            return
+        }
+        restartStaleDaemonIfNeeded(reason: "wake")
+    }
+
+    /// Restart root snx-rs when we are not Connected. Needs admin (same as sudo pkill).
+    func restartStaleDaemonIfNeeded(reason: String) {
+        guard snxInstalled, !isBusy else { return }
+        if vpnState == .connected { return }
+        if let last = lastDaemonRestartAt, Date().timeIntervalSince(last) < 60 { return }
+
+        isBusy = true
+        Task.detached {
+            do {
+                let restarted = try SnxClient.refreshStaleDaemonIfNeeded()
+                await MainActor.run {
+                    if restarted {
+                        self.lastDaemonRestartAt = Date()
+                        self.lastError = nil
+                        NSLog("snx-rs daemon restarted (\(reason))")
+                    }
+                    self.snxStatus = .disconnected
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    // Canceling the password dialog is fine — Connect can still be tried.
+                    let message = error.localizedDescription
+                    if !message.localizedCaseInsensitiveContains("canceled") {
+                        self.lastError = message
+                    }
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            }
+        }
+    }
+
+    func restartDaemonManually() {
+        guard snxInstalled, !isBusy else { return }
+        isBusy = true
+        lastError = nil
+        Task.detached {
+            do {
+                try SnxClient.restartDaemon()
+                await MainActor.run {
+                    self.lastDaemonRestartAt = Date()
+                    self.snxStatus = .disconnected
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
             }
         }
     }
@@ -221,13 +308,23 @@ final class AppModel: ObservableObject {
         let site = self.site
         let username = self.username
         let loginType = self.snxLoginType
+        let ignoreCert = self.snxIgnoreServerCert
         rememberSite(site)
         Task {
             do {
-                try await ConnectEngine.connect(site: site, username: username, loginType: loginType)
+                // Work VPN and Red Shield fight over routes; after sleep RS often comes back first.
+                if RedShieldVPN.isConnected() {
+                    try await RedShieldVPN.setConnected(false)
+                }
+                try await ConnectEngine.connect(
+                    site: site,
+                    username: username,
+                    loginType: loginType,
+                    ignoreServerCert: ignoreCert
+                )
                 refreshStatus()
             } catch {
-                lastError = error.localizedDescription
+                lastError = Self.friendlyConnectError(error)
                 refreshStatus()
             }
             isBusy = false
@@ -268,6 +365,7 @@ final class AppModel: ObservableObject {
         let site = self.site
         let username = self.username
         let loginType = self.snxLoginType
+        let ignoreCert = self.snxIgnoreServerCert
         Task {
             do {
                 if wantRedShield {
@@ -280,11 +378,16 @@ final class AppModel: ObservableObject {
                     if RedShieldVPN.isConnected() {
                         try await RedShieldVPN.setConnected(false)
                     }
-                    try await ConnectEngine.connect(site: site, username: username, loginType: loginType)
+                    try await ConnectEngine.connect(
+                        site: site,
+                        username: username,
+                        loginType: loginType,
+                        ignoreServerCert: ignoreCert
+                    )
                 }
                 refreshStatus()
             } catch {
-                lastError = error.localizedDescription
+                lastError = Self.friendlyConnectError(error)
                 refreshStatus()
             }
             isBusy = false
@@ -293,6 +396,25 @@ final class AppModel: ObservableObject {
 
     func openAccessibilitySettings() {
         openPrivacyPane("Privacy_Accessibility")
+    }
+
+    static func friendlyConnectError(_ error: Error) -> String {
+        let message = error.localizedDescription
+        if message.localizedCaseInsensitiveContains("Internal IPSec certificate") {
+            return """
+            \(message) — often after sleep with a half-dead snx-rs tunnel or Red Shield still up. \
+            Tap Disconnect, turn Red Shield off, then Connect again. If it persists: \
+            sudo launchctl kickstart -k system/com.github.snx-rs
+            """
+        }
+        if message.localizedCaseInsensitiveContains("503")
+            || message.localizedCaseInsensitiveContains("Challenge code") {
+            return """
+            \(message) — gateway rejected OTP/password (common right after sleep). \
+            Wait for a fresh TOTP second, Disconnect, then Connect again.
+            """
+        }
+        return message
     }
 
     private func openPrivacyPane(_ anchor: String) {

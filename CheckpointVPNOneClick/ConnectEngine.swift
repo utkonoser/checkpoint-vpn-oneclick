@@ -21,7 +21,7 @@ enum ConnectEngine {
         }
     }
 
-    static func connect(site: String, username: String, loginType: String) async throws {
+    static func connect(site: String, username: String, loginType: String, ignoreServerCert: Bool = true) async throws {
         let site = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let loginType = loginType.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -32,25 +32,50 @@ enum ConnectEngine {
         guard let totpRaw = try KeychainStore.totpSecret(site: site), !totpRaw.isEmpty else { throw Error.missingTOTP }
         let secret = try TOTP.parseSecret(totpRaw)
 
+        // After sleep/wake the snx-rs daemon often keeps a half-dead tunnel. Always start clean.
+        try? SnxClient.disconnect()
+        try await Task.sleep(nanoseconds: 400_000_000)
+
         if let status = try? SnxClient.status(), status.state == .connected {
             throw Error.alreadyConnected
         }
 
-        let remaining = TOTP.secondsRemaining(period: secret.period)
-        if remaining < TOTP.rolloverSafety {
-            try await Task.sleep(nanoseconds: UInt64((remaining + 0.35) * 1_000_000_000))
+        var lastError: Swift.Error?
+        for attempt in 1...2 {
+            let remaining = TOTP.secondsRemaining(period: secret.period)
+            if remaining < TOTP.rolloverSafety {
+                try await Task.sleep(nanoseconds: UInt64((remaining + 0.35) * 1_000_000_000))
+            }
+            let mfa = TOTP.code(for: secret)
+
+            do {
+                try SnxClient.connect(
+                    server: site,
+                    loginType: loginType.isEmpty ? SnxClient.defaultLoginType : loginType,
+                    username: username,
+                    password: password,
+                    mfaCode: mfa,
+                    ignoreServerCert: ignoreServerCert
+                )
+                try await waitUntilConnected()
+                return
+            } catch {
+                lastError = error
+                let message = error.localizedDescription
+                let retryable =
+                    message.localizedCaseInsensitiveContains("certificate")
+                    || message.localizedCaseInsensitiveContains("503")
+                    || message.localizedCaseInsensitiveContains("challenge")
+                    || message.localizedCaseInsensitiveContains("timeout")
+                    || message.localizedCaseInsensitiveContains("unsuccessful")
+                guard attempt == 1, retryable else { break }
+                NSLog("ConnectEngine retry with daemon restart after: \(message)")
+                // Soft disconnect is not enough after sleep — restart LaunchDaemon (admin prompt).
+                _ = try? SnxClient.refreshStaleDaemonIfNeeded()
+                try await Task.sleep(nanoseconds: 800_000_000)
+            }
         }
-        let mfa = TOTP.code(for: secret)
-
-        try SnxClient.connect(
-            server: site,
-            loginType: loginType.isEmpty ? SnxClient.defaultLoginType : loginType,
-            username: username,
-            password: password,
-            mfaCode: mfa
-        )
-
-        try await waitUntilConnected()
+        throw lastError ?? Error.connectFailed("Connect failed")
     }
 
     static func disconnect() throws {

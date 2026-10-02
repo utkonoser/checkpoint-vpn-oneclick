@@ -79,7 +79,8 @@ enum SnxClient {
         loginType: String,
         username: String,
         password: String,
-        mfaCode: String
+        mfaCode: String,
+        ignoreServerCert: Bool = true
     ) throws {
         guard let snxctl = snxctlPath() else { throw Error.notInstalled }
         let configURL = try writeConnectConfig(
@@ -87,7 +88,8 @@ enum SnxClient {
             loginType: loginType,
             username: username,
             password: password,
-            mfaCode: mfaCode
+            mfaCode: mfaCode,
+            ignoreServerCert: ignoreServerCert
         )
         defer { try? FileManager.default.removeItem(at: configURL) }
 
@@ -102,6 +104,70 @@ enum SnxClient {
     /// Local disconnect via daemon socket — works even when the VPN gateway is unreachable.
     static func disconnect() throws {
         _ = try daemonRequest("Disconnect")
+    }
+
+    /// True when an snx-rs process is alive (LaunchDaemon or leftover after sleep).
+    static func isDaemonProcessRunning() -> Bool {
+        let result = run(
+            executable: "/usr/bin/pgrep",
+            arguments: ["-f", "snx-rs -m command"],
+            timeout: 2
+        )
+        if result.status == 0 { return true }
+        let any = run(executable: "/usr/bin/pgrep", arguments: ["-x", "snx-rs"], timeout: 2)
+        return any.status == 0
+    }
+
+    /// Kill + respawn the system LaunchDaemon (same effect as `sudo pkill snx-rs` with KeepAlive).
+    /// Needs an admin password prompt — snx-rs runs as root.
+    static func restartDaemon() throws {
+        // Prefer launchctl kickstart -k (clean kill+start). Fall back to killall.
+        let shell = """
+        /bin/launchctl kickstart -k system/com.github.snx-rs 2>/dev/null \
+          || (/usr/bin/killall snx-rs 2>/dev/null; /bin/sleep 1; /bin/launchctl kickstart system/com.github.snx-rs)
+        """
+        let escaped = shell
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "do shell script \"\(escaped)\" with administrator privileges"
+        let result = run(executable: "/usr/bin/osascript", arguments: ["-e", script], timeout: 120)
+        if result.status != 0 {
+            let message = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if message.localizedCaseInsensitiveContains("User canceled")
+                || message.localizedCaseInsensitiveContains("(-128)") {
+                throw Error.failed("Admin password canceled — snx-rs was not restarted.")
+            }
+            throw Error.failed(message.isEmpty ? "Failed to restart snx-rs daemon" : message)
+        }
+        try waitForDaemon(timeout: 8)
+    }
+
+    /// Restart the daemon when idle so a half-dead post-sleep process cannot break Connect.
+    /// No-ops if the tunnel is currently Connected (would drop the session).
+    @discardableResult
+    static func refreshStaleDaemonIfNeeded() throws -> Bool {
+        if let status = try? status(), status.state == .connected {
+            return false
+        }
+        guard isDaemonProcessRunning() || FileManager.default.fileExists(atPath: socketPath) else {
+            return false
+        }
+        // Soft disconnect first (no password); then hard restart like `sudo pkill snx-rs`.
+        try? disconnect()
+        try restartDaemon()
+        return true
+    }
+
+    private static func waitForDaemon(timeout: TimeInterval) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: socketPath),
+               (try? daemonRequest("GetStatus", timeout: 1)) != nil {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        throw Error.daemonUnavailable("daemon did not come back after restart")
     }
 
     static func parseStatus(_ raw: String) -> SnxStatus {
@@ -211,7 +277,8 @@ enum SnxClient {
         loginType: String,
         username: String,
         password: String,
-        mfaCode: String
+        mfaCode: String,
+        ignoreServerCert: Bool = true
     ) throws -> URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/CheckpointVPNOneClick", isDirectory: true)
@@ -222,6 +289,8 @@ enum SnxClient {
         )
         let url = dir.appendingPathComponent("snx-rs-connect.conf")
         let passwordB64 = Data(password.utf8).base64EncodedString()
+        // Corporate Check Point gateways often fail snx-rs internal IPsec CA fingerprint checks
+        // unless ignore-server-cert is set (same as `snx-rs -X true`).
         let body = """
         server-name=\(server)
         login-type=\(loginType)
@@ -230,6 +299,7 @@ enum SnxClient {
         mfa-code=\(mfaCode)
         keychain=false
         tunnel-type=ipsec
+        ignore-server-cert=\(ignoreServerCert ? "true" : "false")
         """
         try body.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -305,13 +375,49 @@ enum SnxClient {
             throw Error.failed("Invalid daemon response length \(responseLength)")
         }
         let body = try readExact(fd: fd, count: Int(responseLength), timeout: timeout)
-        guard let object = try JSONSerialization.jsonObject(with: body) as Any? else {
-            throw Error.failed("Empty daemon response")
-        }
+        let object = try parseDaemonJSON(body)
         if let dict = object as? [String: Any], let message = dict["Error"] as? String {
             throw Error.failed(message)
         }
         return object
+    }
+
+    /// snx-rs replies with top-level JSON strings for unit enums (`"Ok"`, `"GetStatus"` requests),
+    /// which `JSONSerialization` rejects — handle those manually.
+    private static func parseDaemonJSON(_ data: Data) throws -> Any {
+        let trimmed = data.trimmingASCIIWhitespace()
+        guard !trimmed.isEmpty else { throw Error.failed("Empty daemon response") }
+
+        if trimmed.first == UInt8(ascii: "\"") {
+            guard let text = String(data: trimmed, encoding: .utf8) else {
+                throw Error.failed("Invalid daemon string response")
+            }
+            // Decode a JSON string literal including escapes.
+            var result = ""
+            var chars = text.dropFirst().makeIterator()
+            while let ch = chars.next() {
+                if ch == "\"" { return result }
+                if ch == "\\" {
+                    guard let escaped = chars.next() else { break }
+                    switch escaped {
+                    case "\"", "\\", "/": result.append(escaped)
+                    case "n": result.append("\n")
+                    case "r": result.append("\r")
+                    case "t": result.append("\t")
+                    default: result.append(escaped)
+                    }
+                } else {
+                    result.append(ch)
+                }
+            }
+            throw Error.failed("Unterminated daemon string response")
+        }
+
+        do {
+            return try JSONSerialization.jsonObject(with: trimmed)
+        } catch {
+            throw Error.failed("Could not parse daemon response: \(error.localizedDescription)")
+        }
     }
 
     private static func writeAll(fd: Int32, data: Data, timeout: TimeInterval) throws {
@@ -412,5 +518,16 @@ enum SnxClient {
         let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let combined = (out + "\n" + err).trimmingCharacters(in: .whitespacesAndNewlines)
         return (process.terminationStatus, combined)
+    }
+}
+
+private extension Data {
+    func trimmingASCIIWhitespace() -> Data {
+        var start = startIndex
+        var end = endIndex
+        let ws: Set<UInt8> = [0x09, 0x0A, 0x0D, 0x20]
+        while start < end, ws.contains(self[start]) { start = index(after: start) }
+        while end > start, ws.contains(self[index(before: end)]) { end = index(before: end) }
+        return self[start..<end]
     }
 }

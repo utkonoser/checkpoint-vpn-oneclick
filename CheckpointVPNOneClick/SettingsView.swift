@@ -46,6 +46,15 @@ struct SettingsView: View {
                     Text(model.snxInstalled ? "Yes" : "Missing")
                         .foregroundStyle(model.snxInstalled ? .green : .orange)
                 }
+                Toggle("Ignore server certificate", isOn: $model.snxIgnoreServerCert)
+                Text("Needed for many corporate Check Point gateways (`Internal IPSec certificate validation failed`). Same as snx-rs -X.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Restart snx-rs daemon…") { model.restartDaemonManually() }
+                    .disabled(model.isBusy || !model.snxInstalled)
+                Text("Same as `sudo pkill snx-rs` / `launchctl kickstart -k`. Asks for your Mac password. App also does this on launch/wake when Idle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if !model.snxInstalled {
                     Text("Install SNX-RS.pkg from https://github.com/ancwrd1/snx-rs/releases (includes snxctl + LaunchDaemon). If the official Check Point client is also installed, disconnect it manually before connecting here.")
                         .font(.caption)
