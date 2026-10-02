@@ -88,24 +88,51 @@ struct SettingsView: View {
             }
 
             Section("Secrets") {
-                LabeledContent("Password") {
-                    SecureField(model.hasPassword ? "Saved for this site" : "Required", text: $password)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Password")
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text(model.hasPassword ? "Saved" : "Not set")
+                            .font(.caption)
+                            .foregroundStyle(model.hasPassword ? .green : .orange)
+                    }
+                    SecureField(
+                        model.hasPassword ? "Leave empty to keep, or type a new password" : "Enter VPN password",
+                        text: $password
+                    )
+                    .textFieldStyle(.roundedBorder)
+
+                    HStack {
+                        Text("TOTP secret")
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text(model.hasTOTP ? "Saved" : "Not set")
+                            .font(.caption)
+                            .foregroundStyle(model.hasTOTP ? .green : .orange)
+                    }
+                    SecureField(
+                        model.hasTOTP ? "Leave empty to keep, or paste a new secret" : "otpauth:// URL or Base32 secret",
+                        text: $totp
+                    )
+                    .textFieldStyle(.roundedBorder)
+
+                    Text("Paste into the fields above, or import a QR. Values apply only to the selected site. Empty fields keep the current saved secret.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack {
+                        Button("Save secrets") { saveSecrets() }
+                            .disabled(password.isEmpty && totp.isEmpty)
+                        Button("Import QR image…") { importingQR = true }
+                        Button("Paste QR from clipboard") { importClipboardQR() }
+                    }
+                    if let saveMessage {
+                        Text(saveMessage).font(.caption)
+                    }
                 }
-                LabeledContent("TOTP secret") {
-                    SecureField(model.hasTOTP ? "Saved for this site" : "otpauth:// or Base32", text: $totp)
-                }
-                Text("Paste the Base32 secret, an otpauth:// URL, or import a QR screenshot. Values apply only to the selected site.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Button("Save secrets") { saveSecrets() }
-                        .disabled(password.isEmpty && totp.isEmpty)
-                    Button("Import QR image…") { importingQR = true }
-                    Button("Paste QR from clipboard") { importClipboardQR() }
-                }
-                if let saveMessage {
-                    Text(saveMessage).font(.caption)
-                }
+                .padding(.vertical, 4)
             }
 
             Section("Connect") {

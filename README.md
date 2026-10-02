@@ -1,27 +1,30 @@
 # Checkpoint VPN One-Click
 
-Menu bar helper that connects **Check Point** VPN using an embedded tunnel engine (vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork) with a saved password + fresh TOTP.
+Menu bar app for **Check Point** remote access on macOS. It ships its own tunnel helper (vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork) and drives it with a saved password + live TOTP — no official Check Point UI, no separate `SNX-RS.pkg`.
 
-No separate `SNX-RS.pkg` is required. On first Connect (or **Install / repair tunnel helper**), macOS asks for an admin password once to install `local.checkpointvpn.tunnel`.
+**Work VPN only (split-tunnel):** corporate routes come from the gateway; the default internet route stays free for [Karing](https://karing.app) (or similar).
 
-Use this app for **work VPN only** (split-tunnel). For the rest of the internet, run [Karing](https://karing.app) (or similar) with Direct rules for work domains / RF IPs.
+Not affiliated with Check Point.
 
 ## Features
 
-- **Connect / Disconnect** through the bundled `CheckpointVPNTunnel` helper
-- **Split-tunnel by default**: `default-route=false` — keeps gateway-pushed corporate routes
-- **Per-site secrets**: password + TOTP (Base32, `otpauth://`, or QR)
+- **Connect / Disconnect** via bundled `CheckpointVPNTunnel` + `checkpoint-vpnctl`
+- **Embedded helper**: first Connect (or **Install / repair tunnel helper…**) installs LaunchDaemon `local.checkpointvpn.tunnel` (admin password once)
+- **Split-tunnel** (`default-route=false`) — keeps Office Mode / GW routes, does not own all traffic
+- **Per-site secrets**: password + TOTP (Base32, `otpauth://`, or QR); clear fields with Saved / Not set status
+- **Live TOTP** preview in Settings
 - **Site picker** in the menu bar
-- **Work domains** list + **Copy Karing rules** for Direct diversion
-- **One install**: app embeds the helper; LaunchDaemon install is in-app
+- **Work domains** + **Copy Karing rules** for Direct diversion
+- **Ignore server certificate** toggle (common on corporate gateways)
+- **Restart / repair** tunnel helper after sleep
 
-Secrets are stored in `~/Library/Application Support/CheckpointVPNOneClick/secrets.plist` (mode `0600`).
+Secrets live in `~/Library/Application Support/CheckpointVPNOneClick/secrets.plist` (mode `0600`), not in the login Keychain.
 
 ## Download
 
 - [Latest release](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/latest)
 
-The GitHub build is ad-hoc signed (no Apple Developer ID). Drag the app to `/Applications`, then right-click → **Open** the first time, or run:
+Builds are **ad-hoc signed** (no Apple Developer ID). After drag-and-drop to `/Applications`, right-click → **Open**, or:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app
@@ -29,60 +32,79 @@ xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app
 
 ## Requirements
 
-- macOS 14+
-- Admin password once (install LaunchDaemon)
-- Optional: [Karing](https://karing.app) for non-corporate traffic
-- Build from source also needs Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), and a Rust toolchain (`cargo`) for the helper
+| Need | Notes |
+|------|--------|
+| macOS 14+ | |
+| Admin once | Installs `/Library/Application Support/CheckpointVPNTunnel` + LaunchDaemon |
+| Optional Karing | Non-corporate traffic / proxy |
+| From source | Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), Rust (`cargo`) for the helper |
 
-If the official Check Point Endpoint Security client **or** upstream snx-rs (`com.github.snx-rs`) is installed, **disconnect it** before connecting here.
+**Conflicts:** disconnect the official Check Point Endpoint client and upstream snx-rs (`com.github.snx-rs`) before connecting — two IPsec stacks fight over routes.
 
-## Setup (work VPN)
+## Quick setup
 
-1. Open the app from `~/Applications` or `/Applications`.
-2. **Settings**: site (VPN hostname), username, login type (`vpn_VPN_RA` from helper info / gateway docs), password + TOTP.
-3. Optional: work domains for Karing export.
-4. **Install / repair tunnel helper…** (or just **Connect** — install runs automatically when needed).
-5. Connect from the menu bar or Settings.
+1. Install / open the app (`~/Applications` or `/Applications`).
+2. **Settings → VPN:** site (hostname), username, login type (usually `vpn_VPN_RA`).
+3. **Settings → Secrets:** enter password and TOTP (or import QR), then **Save secrets**. Status shows **Saved** / **Not set**.
+4. Optional: **Work domains** (one per line) → **Copy Karing rules**.
+5. **Install / repair tunnel helper…** (or Connect — install runs when needed).
+6. **Connect** from the menu bar or Settings.
 
-Login type discovery (optional):
+Discover login types after the helper is installed:
 
 ```bash
 /Library/Application\ Support/CheckpointVPNTunnel/CheckpointVPNTunnel -m info -s vpn.example.com
 ```
 
-## Using with Karing (both at once)
+## Using with Karing
 
-1. Install [Karing](https://karing.app) and add your subscription / nodes.
-2. Enable TUN / system proxy as required.
-3. **Diversion → Country / Region:** Russia (or yours) so geoip RF → **Direct**.
-4. **Custom diversion group** (`work-vpn`): Settings → Work domains → **Copy Karing rules** → Domain Suffix → **Direct**.
-5. Start **Karing** first, then **Connect** work VPN here.
+Goal: work nets → this app’s tunnel; everything else → Karing; RF / work domains → **Direct** in Karing so they hit macOS routes → utun.
 
-See [docs/tunnel-engine.md](docs/tunnel-engine.md) for architecture. Helper licensing: [THIRD_PARTY.md](THIRD_PARTY.md).
+1. Install [Karing](https://karing.app), add subscription, enable TUN / system proxy as required.
+2. **Diversion → Country / Region:** Russia (or yours) so geoip RF → **Direct**.
+3. Custom diversion group (e.g. `work-vpn`): paste Domain Suffixes from **Copy Karing rules** → action **Direct**.
+4. Start **Karing** first, then **Connect** here.
+
+If corp sites still go through the proxy, check Karing hit detection / rule order. If random internet goes into the work tunnel, confirm split-tunnel (`default-route=false` — set automatically).
+
+```text
+Browser / apps
+    ├─ work domain (Karing Direct) ──► macOS routes ──► CheckpointVPNTunnel (GW CIDRs)
+    ├─ RF IP (geoip Direct)        ──► macOS routes
+    └─ rest                        ──► Karing node
+```
+
+## Architecture (short)
+
+| Piece | Role |
+|-------|------|
+| Swift menu bar app | UI, secrets, TOTP, connect conf |
+| `CheckpointVPNTunnel` | Root daemon (snx-rs command mode fork) |
+| Socket | `/var/run/checkpoint-vpn.sock` |
+| LaunchDaemon | `local.checkpointvpn.tunnel` |
+
+Details: [docs/tunnel-engine.md](docs/tunnel-engine.md). Licensing / AGPL: [THIRD_PARTY.md](THIRD_PARTY.md). Manual checks: [docs/manual-test-plan.md](docs/manual-test-plan.md).
 
 ## Build from source
 
 ```bash
-make helper   # builds Vendor/snx-rs → TunnelHelper/dist
-make install  # signs, embeds helper, installs to ~/Applications
+make helper    # Vendor/snx-rs → TunnelHelper/dist
+make install   # sign, embed helper, install to ~/Applications
 ```
-
-Other targets:
 
 ```bash
 make build
 make test
-make generate
-make dmg
+make generate  # xcodegen → .xcodeproj
+make dmg       # local DMG under build/
 ```
 
-### Manual test plan (clean Mac)
+GitHub release DMG: **Actions → Release DMG → Run workflow** (needs Rust on the runner; embeds the helper).
 
-1. Install only this app (no SNX-RS.pkg).
-2. Install / repair helper (admin once); confirm `/var/run/checkpoint-vpn.sock` and LaunchDaemon `local.checkpointvpn.tunnel`.
-3. Connect: corp routes present, no default via tunnel (`default_route=false` in status).
-4. With Karing + Direct rules: corp via work VPN; general internet via Karing; RF Direct.
-5. Sleep/wake → Repair or auto-restart → Connect again.
-6. Disconnect work VPN: corp breaks; Karing still works.
+### After sleep / helper issues
 
-To publish a GitHub release DMG: **Actions → Release DMG → Run workflow**.
+Settings → **Restart tunnel helper…** or **Install / repair…**. Equivalent:
+
+```bash
+sudo launchctl kickstart -k system/local.checkpointvpn.tunnel
+```
