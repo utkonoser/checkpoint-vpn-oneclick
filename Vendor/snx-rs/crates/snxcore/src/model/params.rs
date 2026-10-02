@@ -1,0 +1,1070 @@
+use std::{
+    cmp::Ordering,
+    fmt, fs,
+    io::{Cursor, Write},
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
+
+use anyhow::anyhow;
+use base64::Engine;
+use cached::cached;
+use i18n::tr;
+use ipnet::Ipv4Net;
+use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tracing::warn;
+use uuid::Uuid;
+
+use crate::util::{self, ipv4net_to_string, parse_ipv4_or_subnet};
+
+#[cached]
+pub fn default_config_dir_cached() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let base = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("ProgramData").map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("C:\\ProgramData"));
+        base.join("snx-rs")
+    }
+    #[cfg(not(windows))]
+    {
+        let base = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+            .unwrap_or_else(|| PathBuf::from("/etc"));
+        base.join("snx-rs")
+    }
+}
+
+fn serialize_secret_string<S>(secret: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(secret.expose_secret())
+}
+
+fn deserialize_secret_string<'de, D>(deserializer: D) -> Result<SecretString, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(s.into())
+}
+
+fn serialize_option_secret_string<S>(secret: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match secret {
+        Some(s) => serializer.serialize_some(s.expose_secret()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn deserialize_option_secret_string<'de, D>(deserializer: D) -> Result<Option<SecretString>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    Ok(opt.map(|s| s.into()))
+}
+
+const DEFAULT_IKE_LIFETIME: Duration = Duration::from_secs(28800);
+
+const DEFAULT_MTU: u16 = 1350;
+
+pub const DEFAULT_PROFILE_UUID: Uuid = uuid::uuid!("38703862-805c-441c-922e-ee45eaf2bb5e");
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum OperationMode {
+    #[default]
+    Standalone,
+    Command,
+    Info,
+    Enroll,
+    Renew,
+    #[cfg(target_os = "windows")]
+    Service,
+    #[cfg(target_os = "windows")]
+    Install,
+    #[cfg(target_os = "windows")]
+    Uninstall,
+}
+
+impl OperationMode {
+    pub fn requires_root(&self) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            matches!(self, Self::Standalone | Self::Command | Self::Install | Self::Uninstall)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            matches!(self, Self::Standalone | Self::Command)
+        }
+    }
+}
+
+impl FromStr for OperationMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "standalone" => Ok(Self::Standalone),
+            "command" => Ok(Self::Command),
+            "info" => Ok(Self::Info),
+            "enroll" => Ok(Self::Enroll),
+            "renew" => Ok(Self::Renew),
+            #[cfg(target_os = "windows")]
+            "service" => Ok(Self::Service),
+            #[cfg(target_os = "windows")]
+            "install" => Ok(Self::Install),
+            #[cfg(target_os = "windows")]
+            "uninstall" => Ok(Self::Uninstall),
+            _ => Err(anyhow!(tr!("error-invalid-operation-mode"))),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum TunnelType {
+    #[default]
+    IPsec,
+    SSL,
+}
+
+impl TunnelType {
+    pub fn as_client_type(&self) -> &'static str {
+        "TRAC"
+    }
+
+    pub fn as_client_mode(&self) -> &'static str {
+        "secure_connect"
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TunnelType::IPsec => "ipsec",
+            TunnelType::SSL => "ssl",
+        }
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            TunnelType::IPsec => 0,
+            TunnelType::SSL => 1,
+        }
+    }
+}
+
+impl FromStr for TunnelType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "ipsec" => Ok(TunnelType::IPsec),
+            "ssl" => Ok(TunnelType::SSL),
+            _ => Err(anyhow!(tr!("error-invalid-tunnel-type"))),
+        }
+    }
+}
+
+impl fmt::Display for TunnelType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SSL => write!(f, "SSL"),
+            Self::IPsec => write!(f, "IPsec"),
+        }
+    }
+}
+
+impl From<u32> for TunnelType {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => Self::IPsec,
+            _ => Self::SSL,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CertType {
+    #[default]
+    None,
+    Pkcs12,
+    Pkcs8,
+    Pkcs11,
+    System,
+}
+
+impl CertType {
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::None => 0,
+            Self::Pkcs12 => 1,
+            Self::Pkcs8 => 2,
+            Self::Pkcs11 => 3,
+            Self::System => 4,
+        }
+    }
+}
+
+impl From<u32> for CertType {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Pkcs12,
+            2 => Self::Pkcs8,
+            3 => Self::Pkcs11,
+            4 => Self::System,
+            _ => Self::None,
+        }
+    }
+}
+
+impl fmt::Display for CertType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::None => "none",
+            Self::Pkcs12 => "pkcs12",
+            Self::Pkcs8 => "pkcs8",
+            Self::Pkcs11 => "pkcs11",
+            Self::System => "system",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for CertType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(CertType::None),
+            "pkcs12" => Ok(CertType::Pkcs12),
+            "pkcs8" => Ok(CertType::Pkcs8),
+            "pkcs11" => Ok(CertType::Pkcs11),
+            "system" => Ok(CertType::System),
+            _ => Err(anyhow!(tr!("error-invalid-cert-type"))),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ColorTheme {
+    #[default]
+    AutoDetect,
+    Dark,
+    Light,
+}
+
+impl ColorTheme {
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::AutoDetect => 0,
+            Self::Dark => 1,
+            Self::Light => 2,
+        }
+    }
+}
+
+impl From<u32> for ColorTheme {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Dark,
+            2 => Self::Light,
+            _ => Self::AutoDetect,
+        }
+    }
+}
+
+impl fmt::Display for ColorTheme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::AutoDetect => "auto",
+            Self::Dark => "dark",
+            Self::Light => "light",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for ColorTheme {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(ColorTheme::AutoDetect),
+            "dark" => Ok(ColorTheme::Dark),
+            "light" => Ok(ColorTheme::Light),
+            _ => Err(anyhow!(tr!("error-invalid-icon-theme"))),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum TransportType {
+    #[default]
+    AutoDetect,
+    Udp,
+    Tcpt,
+    Kernel,
+}
+
+impl TransportType {
+    pub fn as_i18n(&self) -> String {
+        match self {
+            Self::AutoDetect => tr!("transport-type-autodetect"),
+            Self::Udp => tr!("transport-type-udp"),
+            Self::Tcpt => tr!("transport-type-tcpt"),
+            Self::Kernel => tr!("transport-type-kernel"),
+        }
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::AutoDetect => 0,
+            Self::Udp => 1,
+            Self::Tcpt => 2,
+            Self::Kernel => 3,
+        }
+    }
+}
+
+impl fmt::Display for TransportType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AutoDetect => write!(f, "auto"),
+            Self::Kernel => write!(f, "kernel"),
+            Self::Udp => write!(f, "udp"),
+            Self::Tcpt => write!(f, "tcpt"),
+        }
+    }
+}
+
+impl FromStr for TransportType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(TransportType::AutoDetect),
+            "kernel" => Ok(TransportType::Kernel),
+            "tcpt" => Ok(TransportType::Tcpt),
+            "udp" => Ok(TransportType::Udp),
+            _ => Err(anyhow!(tr!("error-invalid-transport-type"))),
+        }
+    }
+}
+
+impl From<u32> for TransportType {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Udp,
+            2 => Self::Tcpt,
+            3 => Self::Kernel,
+            _ => Self::AutoDetect,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum IkeVersion {
+    #[default]
+    AutoDetect,
+    V1,
+    V2,
+}
+
+impl IkeVersion {
+    pub fn as_i18n(&self) -> String {
+        match self {
+            Self::AutoDetect => tr!("ike-version-autodetect"),
+            Self::V1 => tr!("ike-version-1"),
+            Self::V2 => tr!("ike-version-2"),
+        }
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::AutoDetect => 0,
+            Self::V1 => 1,
+            Self::V2 => 2,
+        }
+    }
+}
+
+impl fmt::Display for IkeVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AutoDetect => write!(f, "auto"),
+            Self::V1 => write!(f, "1"),
+            Self::V2 => write!(f, "2"),
+        }
+    }
+}
+
+impl FromStr for IkeVersion {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(IkeVersion::AutoDetect),
+            "1" => Ok(IkeVersion::V1),
+            "2" => Ok(IkeVersion::V2),
+            _ => Err(anyhow!(tr!("error-invalid-ike-version"))),
+        }
+    }
+}
+
+impl From<u32> for IkeVersion {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::V1,
+            2 => Self::V2,
+            _ => Self::AutoDetect,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum TlsVersion {
+    #[default]
+    Tls12,
+    Tls13,
+    Default,
+}
+
+impl TlsVersion {
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::Tls12 => 0,
+            Self::Tls13 => 1,
+            Self::Default => 2,
+        }
+    }
+}
+
+impl From<u32> for TlsVersion {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Tls13,
+            2 => Self::Default,
+            _ => Self::Tls12,
+        }
+    }
+}
+
+impl fmt::Display for TlsVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Tls12 => write!(f, "1.2"),
+            Self::Tls13 => write!(f, "1.3"),
+            Self::Default => write!(f, "default"),
+        }
+    }
+}
+
+impl FromStr for TlsVersion {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "1.2" | "tls1.2" | "tls12" => Ok(Self::Tls12),
+            "1.3" | "tls1.3" | "tls13" => Ok(Self::Tls13),
+            "default" | "any" => Ok(Self::Default),
+            _ => Err(anyhow!(tr!("error-invalid-tls-version-max"))),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum NotificationLevel {
+    Off,
+    #[default]
+    Minimal,
+    Standard,
+    Verbose,
+}
+
+impl NotificationLevel {
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::Off => 0,
+            Self::Minimal => 1,
+            Self::Standard => 2,
+            Self::Verbose => 3,
+        }
+    }
+
+    pub fn as_i18n(&self) -> String {
+        match self {
+            Self::Off => tr!("notification-level-off"),
+            Self::Minimal => tr!("notification-level-minimal"),
+            Self::Standard => tr!("notification-level-standard"),
+            Self::Verbose => tr!("notification-level-verbose"),
+        }
+    }
+}
+
+impl From<u32> for NotificationLevel {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Minimal,
+            2 => Self::Standard,
+            3 => Self::Verbose,
+            _ => Self::Off,
+        }
+    }
+}
+
+impl fmt::Display for NotificationLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Off => write!(f, "off"),
+            Self::Minimal => write!(f, "minimal"),
+            Self::Standard => write!(f, "standard"),
+            Self::Verbose => write!(f, "verbose"),
+        }
+    }
+}
+
+impl FromStr for NotificationLevel {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "off" => Ok(Self::Off),
+            "minimal" => Ok(Self::Minimal),
+            "standard" => Ok(Self::Standard),
+            "verbose" => Ok(Self::Verbose),
+            _ => Err(anyhow!(tr!("error-invalid-notification-level"))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TunnelParams {
+    pub profile_name: String,
+    pub profile_id: Uuid,
+    pub server_name: String,
+    pub user_name: String,
+    #[serde(
+        serialize_with = "serialize_secret_string",
+        deserialize_with = "deserialize_secret_string"
+    )]
+    pub password: SecretString,
+    pub password_factor: usize,
+    pub log_level: String,
+    pub search_domains: Vec<String>,
+    pub ignore_search_domains: Vec<String>,
+    pub dns_servers: Vec<Ipv4Addr>,
+    pub ignore_dns_servers: Vec<Ipv4Addr>,
+    pub default_route: bool,
+    pub no_routing: bool,
+    pub add_routes: Vec<Ipv4Net>,
+    pub ignore_routes: Vec<Ipv4Net>,
+    pub no_dns: bool,
+    pub no_split_dns: bool,
+    pub ignore_server_cert: bool,
+    pub tunnel_type: TunnelType,
+    pub ca_cert: Vec<PathBuf>,
+    pub login_type: String,
+    pub cert_type: CertType,
+    pub cert_path: Option<PathBuf>,
+    #[serde(
+        serialize_with = "serialize_option_secret_string",
+        deserialize_with = "deserialize_option_secret_string"
+    )]
+    pub cert_password: Option<SecretString>,
+    pub cert_id: Option<String>,
+    pub if_name: Option<String>,
+    pub keychain: bool,
+    pub ike_version: IkeVersion,
+    pub ike_lifetime: Duration,
+    pub ike_persist: bool,
+    pub client_mode: String,
+    pub no_keepalive: bool,
+    pub icon_theme: ColorTheme,
+    pub color_theme: ColorTheme,
+    pub set_routing_domains: bool,
+    pub port_knock: bool,
+    pub locale: Option<String>,
+    pub auto_connect: bool,
+    pub auto_disconnect: bool,
+    pub ip_lease_time: Option<Duration>,
+    pub disable_ipv6: bool,
+    pub mtu: u16,
+    pub transport_type: TransportType,
+    pub allow_forwarding: bool,
+    pub tls_version_max: TlsVersion,
+    #[serde(skip)]
+    pub mfa_code: Option<String>,
+    #[serde(skip)]
+    pub reg_key: Option<String>,
+    pub client_logging_data: Option<PathBuf>,
+    #[serde(default)]
+    pub notification_level: NotificationLevel,
+    #[serde(skip)]
+    pub config_file: PathBuf,
+}
+
+impl Default for TunnelParams {
+    fn default() -> Self {
+        Self {
+            profile_name: tr!("profile-default-name"),
+            profile_id: DEFAULT_PROFILE_UUID,
+            server_name: String::new(),
+            user_name: String::new(),
+            password: SecretString::default(),
+            password_factor: 1,
+            log_level: "off".to_owned(),
+            search_domains: Vec::new(),
+            ignore_search_domains: Vec::new(),
+            dns_servers: Vec::new(),
+            ignore_dns_servers: Vec::new(),
+            default_route: false,
+            no_routing: false,
+            add_routes: Vec::new(),
+            ignore_routes: Vec::new(),
+            no_dns: false,
+            no_split_dns: false,
+            ignore_server_cert: false,
+            tunnel_type: TunnelType::default(),
+            ca_cert: Vec::new(),
+            login_type: String::new(),
+            cert_type: CertType::default(),
+            cert_path: None,
+            cert_password: None,
+            cert_id: None,
+            if_name: None,
+            keychain: false,
+            ike_version: IkeVersion::default(),
+            ike_lifetime: DEFAULT_IKE_LIFETIME,
+            ike_persist: false,
+            client_mode: TunnelType::IPsec.as_client_mode().to_owned(),
+            no_keepalive: false,
+            icon_theme: ColorTheme::default(),
+            color_theme: ColorTheme::default(),
+            set_routing_domains: false,
+            port_knock: false,
+            locale: None,
+            auto_connect: false,
+            auto_disconnect: false,
+            ip_lease_time: None,
+            disable_ipv6: false,
+            mtu: DEFAULT_MTU,
+            transport_type: TransportType::default(),
+            allow_forwarding: false,
+            tls_version_max: TlsVersion::default(),
+            mfa_code: None,
+            reg_key: None,
+            client_logging_data: None,
+            notification_level: NotificationLevel::default(),
+            config_file: Self::default_config_path(),
+        }
+    }
+}
+
+impl PartialEq for TunnelParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.profile_name == other.profile_name
+            && self.profile_id == other.profile_id
+            && self.server_name == other.server_name
+            && self.user_name == other.user_name
+            && self.password.expose_secret() == other.password.expose_secret()
+            && self.password_factor == other.password_factor
+            && self.log_level == other.log_level
+            && self.search_domains == other.search_domains
+            && self.ignore_search_domains == other.ignore_search_domains
+            && self.dns_servers == other.dns_servers
+            && self.ignore_dns_servers == other.ignore_dns_servers
+            && self.default_route == other.default_route
+            && self.no_routing == other.no_routing
+            && self.add_routes == other.add_routes
+            && self.ignore_routes == other.ignore_routes
+            && self.no_dns == other.no_dns
+            && self.ignore_server_cert == other.ignore_server_cert
+            && self.tunnel_type == other.tunnel_type
+            && self.ca_cert == other.ca_cert
+            && self.login_type == other.login_type
+            && self.cert_type == other.cert_type
+            && self.cert_path == other.cert_path
+            && self.cert_password.as_ref().map(|s| s.expose_secret())
+                == other.cert_password.as_ref().map(|s| s.expose_secret())
+            && self.cert_id == other.cert_id
+            && self.if_name == other.if_name
+            && self.keychain == other.keychain
+            && self.ike_version == other.ike_version
+            && self.ike_lifetime == other.ike_lifetime
+            && self.ike_persist == other.ike_persist
+            && self.client_mode == other.client_mode
+            && self.no_keepalive == other.no_keepalive
+            && self.icon_theme == other.icon_theme
+            && self.set_routing_domains == other.set_routing_domains
+            && self.port_knock == other.port_knock
+            && self.locale == other.locale
+            && self.auto_connect == other.auto_connect
+            && self.auto_disconnect == other.auto_disconnect
+            && self.ip_lease_time == other.ip_lease_time
+            && self.disable_ipv6 == other.disable_ipv6
+            && self.mtu == other.mtu
+            && self.transport_type == other.transport_type
+            && self.allow_forwarding == other.allow_forwarding
+            && self.tls_version_max == other.tls_version_max
+            && self.mfa_code == other.mfa_code
+            && self.reg_key == other.reg_key
+            && self.client_logging_data == other.client_logging_data
+            && self.notification_level == other.notification_level
+            && self.config_file == other.config_file
+    }
+}
+
+impl TunnelParams {
+    pub const IPSEC_KEEPALIVE_PORT: u16 = 18234;
+    pub const IPSEC_SCV_PORT: u16 = 18233;
+    pub const DEFAULT_IPSEC_IF_NAME: &'static str = "snx-xfrm";
+    pub const DEFAULT_SSL_IF_NAME: &'static str = "snx-tun";
+
+    pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let mut params = Self::default();
+        let data = fs::read_to_string(&path)?;
+        let config = util::parse_config(data)?;
+
+        for (k, v) in config.into_iter() {
+            match k.as_str() {
+                "profile-name" => params.profile_name = v,
+                "profile-id" => params.profile_id = v.parse().unwrap_or_default(),
+                "server-name" => params.server_name = v,
+                "user-name" => params.user_name = v,
+                "password" => params.password = v.into(),
+                "password-factor" => params.password_factor = v.parse().unwrap_or(1),
+                "log-level" => params.log_level = v,
+                "search-domains" => params.search_domains = v.split(',').map(|s| s.trim().to_owned()).collect(),
+                "ignore-search-domains" => {
+                    params.ignore_search_domains = v.split(',').map(|s| s.trim().to_owned()).collect();
+                }
+                "dns-servers" => params.dns_servers = v.split(',').flat_map(|s| s.trim().parse().ok()).collect(),
+                "ignore-dns-servers" => {
+                    params.ignore_dns_servers = v.split(',').flat_map(|s| s.trim().parse().ok()).collect();
+                }
+                "default-route" => params.default_route = v.parse().unwrap_or_default(),
+                "no-routing" => params.no_routing = v.parse().unwrap_or_default(),
+                "add-routes" => params.add_routes = v.split(',').flat_map(|s| parse_ipv4_or_subnet(s).ok()).collect(),
+                "ignore-routes" => {
+                    params.ignore_routes = v.split(',').flat_map(|s| parse_ipv4_or_subnet(s).ok()).collect();
+                }
+                "no-dns" => params.no_dns = v.parse().unwrap_or_default(),
+                "no-split-dns" => params.no_split_dns = v.parse().unwrap_or_default(),
+                "ignore-server-cert" => params.ignore_server_cert = v.parse().unwrap_or_default(),
+                "tunnel-type" => params.tunnel_type = v.parse().unwrap_or_default(),
+                "ca-cert" => params.ca_cert = v.split(',').map(|s| s.trim().into()).collect(),
+                "login-type" => params.login_type = v,
+                "cert-type" => params.cert_type = v.parse().unwrap_or_default(),
+                "cert-path" => params.cert_path = Some(v.into()),
+                "cert-password" => params.cert_password = Some(v.into()),
+                "cert-id" => params.cert_id = Some(v),
+                "if-name" => params.if_name = Some(v),
+                "keychain" => params.keychain = v.parse().unwrap_or_default(),
+                "ike-version" => params.ike_version = v.parse().unwrap_or_default(),
+                "ike-lifetime" => {
+                    params.ike_lifetime = v.parse::<u64>().ok().map_or(DEFAULT_IKE_LIFETIME, Duration::from_secs);
+                }
+                "ike-persist" => params.ike_persist = v.parse().unwrap_or_default(),
+                "no-keepalive" => params.no_keepalive = v.parse().unwrap_or_default(),
+                "icon-theme" => params.icon_theme = v.parse().unwrap_or_default(),
+                "client-mode" => params.client_mode = v,
+                "set-routing-domains" => params.set_routing_domains = v.parse().unwrap_or_default(),
+                "port-knock" => params.port_knock = v.parse().unwrap_or_default(),
+                "locale" => params.locale = Some(v),
+                "auto-connect" => params.auto_connect = v.parse().unwrap_or_default(),
+                "auto-disconnect" => params.auto_disconnect = v.parse().unwrap_or_default(),
+                "ip-lease-time" => {
+                    params.ip_lease_time = if !v.trim().is_empty() {
+                        v.parse::<u64>().ok().map(Duration::from_secs)
+                    } else {
+                        None
+                    };
+                }
+                "disable-ipv6" => params.disable_ipv6 = v.parse().unwrap_or_default(),
+                "mtu" => params.mtu = v.parse().unwrap_or(DEFAULT_MTU),
+                "transport-type" => params.transport_type = v.parse().unwrap_or_default(),
+                "allow-forwarding" => params.allow_forwarding = v.parse().unwrap_or_default(),
+                "tls-version-max" => params.tls_version_max = v.parse().unwrap_or_default(),
+                "client-logging-data" => params.client_logging_data = Some(v.into()),
+                "notification-level" => params.notification_level = v.parse().unwrap_or_default(),
+                "mfa-code" => params.mfa_code = Some(v),
+                other => {
+                    warn!("Ignoring unknown option: {}", other);
+                }
+            }
+        }
+        path.as_ref().clone_into(&mut params.config_file);
+        params.decode_password()?;
+
+        Ok(params)
+    }
+
+    pub fn save(&self) -> anyhow::Result<()> {
+        let mut buf = Cursor::new(Vec::new());
+        writeln!(buf, "profile-name={}", self.profile_name)?;
+        writeln!(buf, "profile-id={}", self.profile_id)?;
+        writeln!(buf, "server-name={}", self.server_name)?;
+        writeln!(buf, "user-name={}", self.user_name)?;
+        writeln!(
+            buf,
+            "password={}",
+            base64::engine::general_purpose::STANDARD.encode(self.password.expose_secret())
+        )?;
+        writeln!(buf, "password-factor={}", self.password_factor)?;
+        writeln!(buf, "search-domains={}", self.search_domains.join(","))?;
+        writeln!(buf, "ignore-search-domains={}", self.ignore_search_domains.join(","))?;
+        writeln!(
+            buf,
+            "dns-servers={}",
+            self.dns_servers
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
+        writeln!(
+            buf,
+            "ignore-dns-servers={}",
+            self.ignore_dns_servers
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
+        writeln!(buf, "default-route={}", self.default_route)?;
+        writeln!(buf, "no-routing={}", self.no_routing)?;
+        writeln!(
+            buf,
+            "add-routes={}",
+            self.add_routes
+                .iter()
+                .map(|r| ipv4net_to_string(*r))
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
+        writeln!(
+            buf,
+            "ignore-routes={}",
+            self.ignore_routes
+                .iter()
+                .map(|r| ipv4net_to_string(*r))
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
+        writeln!(buf, "no-dns={}", self.no_dns)?;
+        writeln!(buf, "no-split-dns={}", self.no_split_dns)?;
+        writeln!(buf, "ignore-server-cert={}", self.ignore_server_cert)?;
+        writeln!(buf, "tunnel-type={}", self.tunnel_type.as_str())?;
+        writeln!(
+            buf,
+            "ca-cert={}",
+            self.ca_cert
+                .iter()
+                .map(|r| format!("{}", r.display()))
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
+        writeln!(buf, "login-type={}", self.login_type)?;
+        writeln!(buf, "cert-type={}", self.cert_type)?;
+        if let Some(ref cert_path) = self.cert_path {
+            writeln!(buf, "cert-path={}", cert_path.display())?;
+        }
+        if let Some(ref cert_password) = self.cert_password {
+            writeln!(buf, "cert-password={}", cert_password.expose_secret())?;
+        }
+        if let Some(ref cert_id) = self.cert_id {
+            writeln!(buf, "cert-id={cert_id}")?;
+        }
+        if let Some(ref if_name) = self.if_name {
+            writeln!(buf, "if-name={if_name}")?;
+        }
+        writeln!(buf, "keychain={}", self.keychain)?;
+        writeln!(buf, "ike-version={}", self.ike_version)?;
+        writeln!(buf, "ike-lifetime={}", self.ike_lifetime.as_secs())?;
+        writeln!(buf, "ike-persist={}", self.ike_persist)?;
+        writeln!(buf, "log-level={}", self.log_level)?;
+        writeln!(buf, "client-mode={}", self.client_mode)?;
+        writeln!(buf, "no-keepalive={}", self.no_keepalive)?;
+        writeln!(buf, "icon-theme={}", self.icon_theme)?;
+        writeln!(buf, "set-routing-domains={}", self.set_routing_domains)?;
+        writeln!(buf, "port-knock={}", self.port_knock)?;
+
+        if let Some(ref locale) = self.locale {
+            writeln!(buf, "locale={locale}")?;
+        }
+
+        writeln!(buf, "auto-connect={}", self.auto_connect)?;
+        writeln!(buf, "auto-disconnect={}", self.auto_disconnect)?;
+        writeln!(
+            buf,
+            "ip-lease-time={}",
+            self.ip_lease_time.map(|v| v.as_secs().to_string()).unwrap_or_default()
+        )?;
+        writeln!(buf, "disable-ipv6={}", self.disable_ipv6)?;
+        writeln!(buf, "mtu={}", self.mtu)?;
+        writeln!(buf, "transport-type={}", self.transport_type)?;
+        writeln!(buf, "allow-forwarding={}", self.allow_forwarding)?;
+        writeln!(buf, "tls-version-max={}", self.tls_version_max)?;
+
+        if let Some(ref client_logging_data) = self.client_logging_data {
+            writeln!(buf, "client-logging-data={}", client_logging_data.display())?;
+        }
+
+        writeln!(buf, "notification-level={}", self.notification_level)?;
+
+        PathBuf::from(&self.config_file).parent().iter().for_each(|dir| {
+            let _ = fs::create_dir_all(dir);
+        });
+        fs::write(&self.config_file, buf.into_inner())?;
+
+        Ok(())
+    }
+
+    pub fn decode_password(&mut self) -> anyhow::Result<()> {
+        if !self.password.expose_secret().is_empty() {
+            let decoded = String::from_utf8_lossy(
+                &base64::engine::general_purpose::STANDARD.decode(self.password.expose_secret())?,
+            )
+            .into_owned();
+            self.password = SecretString::from(decoded);
+        }
+        Ok(())
+    }
+
+    pub fn default_config_dir() -> PathBuf {
+        default_config_dir_cached()
+    }
+
+    pub fn default_config_path() -> PathBuf {
+        Self::default_config_dir().join("snx-rs.conf")
+    }
+
+    pub fn profile_order_path() -> PathBuf {
+        Self::default_config_dir().join("profiles.order")
+    }
+
+    pub fn load_profile_order() -> Vec<Uuid> {
+        fs::read_to_string(Self::profile_order_path())
+            .ok()
+            .map(|s| s.lines().filter_map(|l| l.trim().parse().ok()).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn save_profile_order(order: &[Uuid]) -> anyhow::Result<()> {
+        let dir = default_config_dir_cached();
+        fs::create_dir_all(&dir)?;
+        let body: String = order.iter().map(|u| format!("{u}\n")).collect();
+        fs::write(dir.join("profiles.order"), body)?;
+        Ok(())
+    }
+
+    pub fn load_all_from<P: AsRef<Path>>(path: P) -> Vec<Self> {
+        let mut result = Vec::new();
+
+        if let Ok(mut entries) = fs::read_dir(path) {
+            while let Some(Ok(entry)) = entries.next() {
+                if entry.file_name().to_string_lossy().strip_suffix(".conf").is_some()
+                    && let Ok(params) = TunnelParams::load(entry.path())
+                {
+                    result.push(params);
+                }
+            }
+        }
+
+        let order = Self::load_profile_order();
+        result.sort_by(|a, b| {
+            let ai = order.iter().position(|id| *id == a.profile_id);
+            let bi = order.iter().position(|id| *id == b.profile_id);
+            match (ai, bi) {
+                (Some(x), Some(y)) => x.cmp(&y),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                // unknown to the order file: default goes first, rest alphabetical
+                (None, None) => {
+                    if a.profile_id == DEFAULT_PROFILE_UUID {
+                        Ordering::Less
+                    } else if b.profile_id == DEFAULT_PROFILE_UUID {
+                        Ordering::Greater
+                    } else {
+                        a.profile_name.cmp(&b.profile_name)
+                    }
+                }
+            }
+        });
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_store_params() {
+        let temp_path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
+        let params = TunnelParams {
+            profile_name: "test".to_owned(),
+            profile_id: Uuid::new_v4(),
+            server_name: "foo".to_string(),
+            user_name: "bar".to_string(),
+            password: "password".into(),
+            password_factor: 1,
+            log_level: "debug".to_string(),
+            search_domains: vec!["dom1".to_owned(), "dom2".to_owned()],
+            ignore_search_domains: vec!["dom3".to_owned(), "dom4".to_owned()],
+            dns_servers: vec![Ipv4Addr::new(1, 2, 3, 4), Ipv4Addr::new(5, 6, 7, 8)],
+            ignore_dns_servers: vec![Ipv4Addr::new(9, 10, 11, 12), Ipv4Addr::new(13, 14, 15, 16)],
+            default_route: true,
+            no_routing: true,
+            add_routes: vec![Ipv4Net::new(Ipv4Addr::new(17, 18, 19, 20), 24).unwrap()],
+            ignore_routes: vec![Ipv4Net::new(Ipv4Addr::new(21, 22, 23, 24), 24).unwrap()],
+            no_dns: true,
+            no_split_dns: true,
+            ignore_server_cert: true,
+            tunnel_type: TunnelType::SSL,
+            ca_cert: vec![PathBuf::from("ca.cert")],
+            login_type: "vpn_test".to_string(),
+            cert_type: CertType::Pkcs8,
+            cert_path: Some(PathBuf::from("cert.pem")),
+            cert_password: Some("password".into()),
+            cert_id: Some("id".to_string()),
+            if_name: Some("ifname".to_string()),
+            keychain: false,
+            ike_version: IkeVersion::V2,
+            ike_lifetime: Duration::from_secs(100),
+            ike_persist: true,
+            client_mode: "client_mode".to_string(),
+            no_keepalive: true,
+            icon_theme: ColorTheme::Light,
+            color_theme: ColorTheme::Dark,
+            set_routing_domains: true,
+            port_knock: true,
+            locale: Some("ja_JP".to_string()),
+            auto_connect: true,
+            auto_disconnect: true,
+            ip_lease_time: Some(Duration::from_secs(500)),
+            disable_ipv6: true,
+            mtu: 2000,
+            transport_type: TransportType::Tcpt,
+            allow_forwarding: true,
+            tls_version_max: TlsVersion::Tls13,
+            mfa_code: None,
+            reg_key: None,
+            client_logging_data: None,
+            notification_level: NotificationLevel::Standard,
+            config_file: temp_path.to_owned(),
+        };
+
+        assert!(params.save().is_ok());
+
+        let loaded = TunnelParams::load(&temp_path).unwrap();
+        assert_eq!(loaded, params);
+    }
+}

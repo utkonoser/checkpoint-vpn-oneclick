@@ -1,0 +1,158 @@
+#!/bin/bash
+
+suffix="$1"
+basedir="$(dirname $(readlink -f $0))/.."
+target="$basedir/target"
+if [ -z "$2" ]; then
+  version="$(git -C "$basedir" describe)"
+else
+  version="$2"
+fi
+deb_version="${version:1}"
+rpm_version="$(echo $version | sed 's/-/~/g')"
+arch="$(uname -m)"
+# Must match the glibc the binaries were linked against, see build-lto.sh
+glibc_version="${GLIBC_VERSION:-2.39}"
+apps="snx-rs snxctl snx-rs-gui"
+assets="snx-rs.service snx-rs-gui.desktop install.sh"
+
+case $arch in
+    aarch64)
+      build_arch=arm64
+      ;;
+    *)
+      build_arch=$arch
+      ;;
+esac
+
+create_run() {
+    echo "Packaging .run for $build_arch"
+
+    name="snx-rs-${version}${suffix}-linux-$build_arch"
+    triple="$arch-unknown-linux-gnu"
+
+    if [ ! -f "$target/$triple/lto/snx-rs" ]; then
+        return
+    fi
+
+    rm -rf "$target/$name"
+    mkdir "$target/$name"
+
+    for app in $apps; do
+        if ! cp "$target/$triple/lto/$app" "$target/$name/"; then
+            exit 1
+        fi
+    done
+
+    for asset in $assets; do
+        cp "$basedir/package/$asset" "$target/$name/"
+    done
+
+    for icon in $basedir/package/icons/*.svg; do
+        cp "$icon" "$target/$name/"
+    done
+
+    cd "$target"
+    tar c "$name" | xz -9 > "$name.tar.xz"
+
+    makeself --quiet --tar-quietly --xz --needroot --sha256 "$name" "$name.run" "SNX-RS VPN Client version $version" ./install.sh
+}
+
+create_deb() {
+    echo "Packaging .deb for $build_arch"
+
+    case $build_arch in
+      x86_64)
+        deb_arch=amd64
+        ;;
+      *)
+        deb_arch=$build_arch
+        ;;
+    esac
+
+    name="snx-rs-${version}${suffix}-linux-$build_arch"
+    tmpdir="$(mktemp -d)"
+    debian="$tmpdir/debian/DEBIAN"
+
+    mkdir -p "$debian"
+    install -m 755 "$basedir/package/debian/postinst" "$debian/"
+    install -m 755 "$basedir/package/debian/preinst" "$debian/"
+    install -m 755 "$basedir/package/debian/prerm" "$debian/"
+    install -m 755 "$basedir/package/debian/postrm" "$debian/"
+
+    mkdir -p "$tmpdir/debian/usr/bin"
+    mkdir -p "$tmpdir/debian/usr/lib/systemd/system"
+    mkdir -p "$tmpdir/debian/usr/share/applications"
+    mkdir -p "$tmpdir/debian/usr/share/icons/hicolor/symbolic/apps"
+
+    for app in $apps; do
+      install -m 755 "$target/$triple/lto/$app" "$tmpdir/debian/usr/bin/"
+    done
+
+    size=$(du -sk $tmpdir/debian/usr/bin | cut -f1)
+
+    sed "s/{{version}}/$deb_version/;s/{{arch}}/$deb_arch/;s/{{size}}/$size/;s/{{glibc}}/$glibc_version/" "$basedir/package/debian/control.in" > "$debian/control"
+
+    cp "$basedir/package/snx-rs.service" "$tmpdir/debian/usr/lib/systemd/system/"
+    cp "$basedir/package/snx-rs-gui.desktop" "$tmpdir/debian/usr/share/applications/"
+    cp "$basedir/package/icons"/*.svg "$tmpdir/debian/usr/share/icons/hicolor/symbolic/apps/"
+
+    if [ -d "$tmpdir/debian/etc" ]; then
+        (cd "$tmpdir/debian" && find etc -type f | sort | sed 's|^|/|') > "$debian/conffiles"
+        [ -s "$debian/conffiles" ] || rm -f "$debian/conffiles"
+    fi
+
+    if ! fakeroot dpkg-deb --build "$tmpdir/debian" "$target/$name.deb"; then
+        exit 1
+    fi
+
+    rm -rf "$tmpdir"
+}
+
+create_rpm() {
+    echo "Packaging .rpm for $build_arch"
+
+    name="snx-rs-${version}${suffix}-linux-$build_arch"
+    tmpdir="$(mktemp -d)"
+    rpm="$tmpdir/rpm"
+
+    export RPM_BUILDROOT="$rpm/root"
+
+    mkdir -p "$rpm/BUILD"
+    mkdir -p "$rpm/RPMS"
+    mkdir -p "$rpm/SOURCES"
+    mkdir -p "$rpm/SPECS"
+    mkdir -p "$rpm/SRPMS"
+    mkdir -p "$rpm/BUILDROOT"
+
+    sed "s/{{version}}/$rpm_version/;s/{{arch}}/$arch/;s/{{glibc}}/$glibc_version/" "$basedir/package/rpm/package.spec.in" > "$rpm/SPECS/package.spec"
+
+    mkdir -p "$RPM_BUILDROOT/usr/bin"
+    mkdir -p "$RPM_BUILDROOT/usr/lib/systemd/system"
+    mkdir -p "$RPM_BUILDROOT/usr/share/applications"
+    mkdir -p "$RPM_BUILDROOT/usr/share/icons/hicolor/symbolic/apps"
+
+    for app in $apps; do
+      install -m 755 "$target/$triple/lto/$app" "$RPM_BUILDROOT/usr/bin/"
+    done
+
+    cp "$basedir/package/snx-rs.service" "$RPM_BUILDROOT/usr/lib/systemd/system/"
+    cp "$basedir/package/snx-rs-gui.desktop" "$RPM_BUILDROOT/usr/share/applications"
+    cp "$basedir/package/icons"/*.svg "$RPM_BUILDROOT/usr/share/icons/hicolor/symbolic/apps/"
+
+    if ! rpmbuild --define "_topdir $rpm" \
+             --define "_buildroot $rpm/BUILDROOT" \
+             --buildroot "$rpm/BUILDROOT" \
+             -bb "$rpm/SPECS/package.spec"; then
+      exit 1
+    fi
+
+    cp "$rpm/RPMS/$arch"/*.rpm "$target/$name.rpm"
+
+    # Cleanup
+    rm -rf "$tmpdir"
+}
+
+create_run
+create_deb
+create_rpm

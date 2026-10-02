@@ -1,0 +1,1084 @@
+import { Button, CheckBox, ComboBox, HorizontalBox, LineEdit, Palette,
+         ScrollView, Switch, TabWidget, VerticalBox, Palette } from "std-widgets.slint";
+import { Tr } from "tr.slint";
+import { IconButton, PlusIcon, PencilIcon, DeleteIcon, DragHandleIcon, RefreshIcon, FolderIcon,
+         PlainLineEdit, PathLineEdit, FormStackRow, FormToggleRow, FormDivider,
+         FormCard, Expander } from "components.slint";
+
+
+export component SettingsWindow inherits Window {
+    title: Tr.dialog-title;
+    min-width: max(800px, 230px + 50px + max(
+        max(
+            max(expander-dns.body-preferred-width, expander-routing.body-preferred-width),
+            max(expander-certs.body-preferred-width, expander-misc.body-preferred-width),
+        ),
+        max(expander-ipsec.body-preferred-width, expander-ui.body-preferred-width),
+    ));
+    min-height: 600px;
+    default-font-size: 14px;
+
+    in property <length> min-form-width: 300px;
+
+    // profile-list row geometry — kept here so the drag-and-drop math can stay in sync.
+    property <length> profile-row-height: 32px;
+    property <length> profile-row-spacing: 2px;
+    property <length> profile-row-pitch: self.profile-row-height + self.profile-row-spacing;
+
+    // profile management
+    in property <[string]> profiles: [];
+    in property <int> default-profile-index: 0;
+    in-out property <int> profile-index: 0;
+
+    // general tab
+    in-out property <string> server-name;
+    in property <[string]> auth-types: [];
+    in-out property <int> auth-type-index: 0;
+    in property <[string]> tunnel-types: [];
+    in-out property <int> tunnel-type-index: 0;
+    in property <bool> tunnel-type-enabled: true;
+    in-out property <bool> machine-cert: false;
+    in property <bool> machine-cert-enabled: false;
+    in property <bool> show-user-auth: false;
+    in property <bool> show-cert-auth: false;
+    in-out property <string> username;
+    in-out property <string> password;
+    in property <[string]> cert-types: [];
+    in-out property <int> cert-type-index: 0;
+    in-out property <string> cert-path;
+    in-out property <string> cert-password;
+    in-out property <string> cert-id;
+    in-out property <string> cert-id-placeholder;
+    property <bool> show-cert-fields: root.show-cert-auth || root.machine-cert;
+    property <bool> show-cert-path: root.show-cert-fields && root.cert-type-index != 0 && root.cert-type-index != 4;
+    property <bool> show-cert-password: root.show-cert-fields && (root.cert-type-index == 1 || root.cert-type-index == 3);
+    property <bool> show-cert-id: root.show-cert-fields && (root.cert-type-index == 3 || root.cert-type-index == 4);
+
+    // dns
+    in-out property <bool> no-dns: false;
+    in-out property <bool> show-no-split-dns: true;
+    in-out property <bool> no-split-dns: false;
+    in-out property <string> dns-servers;
+    in-out property <string> ignored-dns-servers;
+    in-out property <string> search-domains;
+    in-out property <string> ignored-domains;
+    in-out property <bool> set-routing-domains: false;
+
+    // routing
+    in-out property <bool> no-routing: false;
+    in-out property <bool> default-routing: false;
+    in-out property <string> add-routes;
+    in-out property <string> ignored-routes;
+    in-out property <bool> disable-ipv6: false;
+
+    // certs
+    in-out property <string> ca-cert;
+    in-out property <bool> no-cert-check: false;
+
+    // ipsec
+    in-out property <string> ike-lifetime;
+    in-out property <bool> ike-persist: false;
+    in-out property <bool> no-keepalive: false;
+    in-out property <bool> port-knock: false;
+    in property <[string]> transport-types: [];
+    in-out property <int> transport-type-index: 0;
+    in property <[string]> ike-versions: [];
+    in-out property <int> ike-version-index: 0;
+
+    // misc
+    in-out property <string> password-factor;
+    in-out property <bool> keychain: false;
+    in-out property <bool> allow-forwarding: false;
+    in-out property <string> ip-lease-time;
+    in-out property <string> mtu;
+    in property <[string]> tls-version-max-options: [];
+    in-out property <int> tls-version-max-index: 0;
+
+    // ui
+    in property <[string]> icon-themes: [];
+    in-out property <int> icon-theme-index: 0;
+    in property <bool> icon-theme-visible: true;
+
+    in property <[string]> color-themes: [];
+    in-out property <int> color-theme-index: 0;
+    in property <[string]> locales: [];
+    in-out property <int> locale-index: 0;
+    in-out property <bool> auto-connect: false;
+    in-out property <bool> auto-disconnect: false;
+    in property <[string]> notification-levels: [];
+    in-out property <int> notification-level-index: 0;
+    in-out property <bool> fetch-enabled: true;
+
+    // error message
+    in property <string> error-text;
+    in property <color> error-color: Palette.color-scheme == ColorScheme.dark ? #ffffff : #000000;
+
+    // modal confirm
+    in-out property <string> confirm-message;
+    in-out property <bool> confirm-visible: false;
+
+    // modal entry
+    in-out property <string> entry-title;
+    in-out property <string> entry-label;
+    in-out property <string> entry-value;
+    in-out property <bool> entry-visible: false;
+
+    // callbacks
+    callback fetch-info-clicked();
+    callback profile-new-clicked();
+    callback profile-rename-clicked();
+    callback profile-delete-clicked();
+    callback profile-changed();
+    callback profile-reorder(int /* from */, int /* to */);
+    callback auth-type-changed();
+    callback machine-cert-changed();
+    callback browse-ca-cert-clicked();
+    callback browse-cert-path-clicked();
+    callback ok-clicked();
+    callback apply-clicked();
+    callback cancel-clicked();
+    callback confirm-ok-clicked();
+    callback confirm-cancel-clicked();
+    callback entry-ok-clicked(string);
+    callback entry-cancel-clicked();
+
+    public function show-confirm(msg: string) {
+        root.confirm-message = msg;
+        root.confirm-visible = true;
+    }
+
+    public function show-entry(title: string, label: string, value: string) {
+        root.entry-title = title;
+        root.entry-label = label;
+        root.entry-value = value;
+        root.entry-visible = true;
+    }
+
+    changed profile-index => { root.profile-changed(); }
+    changed auth-type-index => { root.auth-type-changed(); }
+    changed machine-cert => {
+        self.height = max(self.preferred-height, root.min-height);
+        root.machine-cert-changed();
+    }
+    changed show-user-auth => { self.height = max(self.preferred-height, root.min-height); }
+    changed show-cert-auth => { self.height = max(self.preferred-height, root.min-height); }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 0px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            vertical-stretch: 1;
+
+            Rectangle {
+                width: 240px;
+                background: Palette.alternate-background;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.border;
+
+                VerticalLayout {
+                    padding: 6px;
+                    spacing: 4px;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        padding-left: 6px;
+                        padding-right: 2px;
+                        padding-top: 2px;
+                        padding-bottom: 2px;
+
+                        Text {
+                            text: Tr.profiles-header;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        IconButton {
+                            clicked => { root.profile-new-clicked(); }
+                            PlusIcon { }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Palette.border;
+                    }
+
+                    ScrollView {
+                        vertical-stretch: 1;
+
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: root.profile-row-spacing;
+
+                            for name[i] in root.profiles: Rectangle {
+                                height: root.profile-row-height;
+                                clip: false;
+
+                                content := Rectangle {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    y: drag-ta.pressed ? drag-ta.mouse-y - drag-ta.pressed-y : 0px;
+                                    animate y {
+                                        duration: drag-ta.pressed ? 0ms : 140ms;
+                                        easing: ease-out;
+                                    }
+                                    border-radius: 4px;
+                                    background: root.profile-index == i
+                                        ? Palette.accent-background
+                                        : row-ta.has-hover || drag-ta.pressed
+                                            ? Palette.control-background.darker(0.1)
+                                            : transparent;
+                                    drop-shadow-blur: drag-ta.pressed ? 12px : 0;
+                                    drop-shadow-color: #00000066;
+                                    drop-shadow-offset-y: drag-ta.pressed ? 2px : 0;
+                                    opacity: drag-ta.pressed ? 0.92 : 1.0;
+
+                                    row-ta := TouchArea {
+                                        clicked => { root.profile-index = i; }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 2px;
+                                        padding-right: 4px;
+                                        spacing: 2px;
+
+                                        Rectangle {
+                                            width: 18px;
+
+                                            DragHandleIcon {
+                                                tint: root.profile-index == i
+                                                    ? Palette.accent-foreground
+                                                    : Palette.foreground.transparentize(0.4);
+                                            }
+                                        }
+
+                                        Text {
+                                            text: name;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                            color: root.profile-index == i
+                                                ? Palette.accent-foreground
+                                                : Palette.foreground;
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            IconButton {
+                                                clicked => {
+                                                    root.profile-index = i;
+                                                    root.profile-rename-clicked();
+                                                }
+                                                PencilIcon {
+                                                    tint: root.profile-index == i
+                                                        ? Palette.accent-foreground
+                                                        : Palette.foreground;
+                                                }
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            IconButton {
+                                                enabled: i != root.default-profile-index;
+                                                clicked => {
+                                                    root.profile-index = i;
+                                                    root.profile-delete-clicked();
+                                                }
+                                                if i != root.default-profile-index: DeleteIcon { }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Drag tracker stays in the OUTER (unmoving) rect to avoid
+                                // feedback when content.y follows the cursor.
+                                drag-ta := TouchArea {
+                                    x: 2px;
+                                    y: 0;
+                                    width: 20px;
+                                    height: parent.height;
+                                    property <int> drop-target:
+                                        clamp(i + round((self.mouse-y - self.pressed-y) / 1px
+                                                        / (root.profile-row-pitch / 1px)),
+                                              0,
+                                              root.profiles.length - 1);
+                                    mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                                    pointer-event(ev) => {
+                                        if (ev.button == PointerEventButton.left
+                                            && ev.kind == PointerEventKind.up) {
+                                            root.profile-index = i;
+                                            if (self.drop-target != i) {
+                                                root.profile-reorder(i, self.drop-target);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            TabWidget {
+                horizontal-stretch: 1;
+
+                Tab {
+                    title: Tr.tab-general;
+
+                    ScrollView {
+                        VerticalLayout {
+                            padding-top: 6px;
+                            alignment: start;
+
+                            FormCard {
+                                min-width: 400px;
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormStackRow {
+                                        label: Tr.label-server-address;
+                                        Rectangle {
+                                            min-height: server-address.min-height;
+                                            preferred-height: server-address.preferred-height;
+
+                                            server-address := PlainLineEdit {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                text <=> root.server-name;
+                                                right-padding: 32px;
+                                                enabled: root.fetch-enabled;
+                                            }
+                                            IconButton {
+                                                x: parent.width - self.width - 4px;
+                                                y: (parent.height - self.height) / 2;
+                                                enabled: root.fetch-enabled && server-address.text != "";
+                                                clicked => { root.fetch-info-clicked(); }
+                                                RefreshIcon {
+                                                    tint: parent.enabled ? Palette.control-foreground
+                                                                         : Palette.control-foreground.transparentize(0.6);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-auth-method;
+                                        ComboBox {
+                                            model: root.auth-types;
+                                            current-index <=> root.auth-type-index;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-tunnel-type;
+                                        ComboBox {
+                                            model: root.tunnel-types;
+                                            current-index <=> root.tunnel-type-index;
+                                            enabled: root.tunnel-type-enabled;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-machine-cert-auth;
+                                        Switch {
+                                            checked <=> root.machine-cert;
+                                            enabled: root.machine-cert-enabled;
+                                        }
+                                    }
+
+                                    if root.show-user-auth: FormDivider { }
+                                    if root.show-user-auth: FormStackRow {
+                                        label: Tr.label-username;
+                                        LineEdit {
+                                            text <=> root.username;
+                                        }
+                                    }
+
+                                    if root.show-user-auth: FormDivider { }
+                                    if root.show-user-auth: FormStackRow {
+                                        label: Tr.label-password;
+                                        LineEdit {
+                                            text <=> root.password;
+                                            input-type: InputType.password;
+                                        }
+                                    }
+
+                                    if root.show-cert-auth || root.machine-cert: FormDivider { }
+                                    if root.show-cert-auth || root.machine-cert: FormStackRow {
+                                        label: Tr.label-cert-auth-type;
+                                        // A ComboBox placed directly in a conditional row leaks its min-width into the row height, so keep it wrapped.
+                                        Rectangle {
+                                            min-height: cert-type-box.min-height;
+                                            preferred-height: cert-type-box.preferred-height;
+
+                                            cert-type-box := ComboBox {
+                                                width: parent.width;
+                                                model: root.cert-types;
+                                                current-index <=> root.cert-type-index;
+                                            }
+                                        }
+                                    }
+
+                                    if root.show-cert-path: FormDivider { }
+                                    if root.show-cert-path: FormStackRow {
+                                        label: root.cert-type-index != 3 ? Tr.label-client-cert : Tr.label-driver-file;
+                                        PathLineEdit {
+                                            text <=> root.cert-path;
+                                            browse-clicked => { root.browse-cert-path-clicked(); }
+                                        }
+                                    }
+
+                                    if root.show-cert-password: FormDivider { }
+                                    if root.show-cert-password: FormStackRow {
+                                        label: root.cert-type-index != 3 ? Tr.label-cert-password : Tr.label-pkcs11-pin;
+                                        LineEdit {
+                                            text <=> root.cert-password;
+                                            input-type: InputType.password;
+                                        }
+                                    }
+
+                                    if root.show-cert-id: FormDivider { }
+                                    if root.show-cert-id: FormStackRow {
+                                        label: root.cert-type-index == 4 ? Tr.label-cert-name : Tr.label-cert-id;
+                                        LineEdit {
+                                            text <=> root.cert-id;
+                                            placeholder-text: root.cert-type-index == 4 ? root.cert-id-placeholder : "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Tab {
+                    title: Tr.tab-advanced;
+
+                    ScrollView {
+                        VerticalLayout {
+                            padding-top: 6px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            expander-dns := Expander {
+                                title: Tr.expand-dns;
+                                icon-kind: "dns";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-no-dns;
+                                        Switch { checked <=> root.no-dns; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-routing-domains;
+                                        Switch {
+                                            checked <=> root.set-routing-domains;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    if root.show-no-split-dns: FormToggleRow {
+                                        label: Tr.label-no-split-dns;
+                                        Switch {
+                                            checked <=> root.no-split-dns;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+
+                                    if root.show-no-split-dns: FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-dns-servers;
+                                        LineEdit {
+                                            text <=> root.dns-servers;
+                                            placeholder-text: Tr.placeholder-ip-addresses;
+                                            min-width: root.min-form-width;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ignored-dns-servers;
+                                        LineEdit {
+                                            text <=> root.ignored-dns-servers;
+                                            placeholder-text: Tr.placeholder-ip-addresses;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-search-domains;
+                                        LineEdit {
+                                            text <=> root.search-domains;
+                                            placeholder-text: Tr.placeholder-domains;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ignored-domains;
+                                        LineEdit {
+                                            text <=> root.ignored-domains;
+                                            placeholder-text: Tr.placeholder-domains;
+                                            enabled: !root.no-dns;
+                                        }
+                                    }
+                                }
+                            }
+
+                            expander-routing := Expander {
+                                title: Tr.expand-routing;
+                                icon-kind: "routing";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-no-routing;
+                                        Switch { checked <=> root.no-routing; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-default-routing;
+                                        Switch { checked <=> root.default-routing; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-disable-ipv6;
+                                        Switch { checked <=> root.disable-ipv6; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-add-routes;
+                                        LineEdit {
+                                            text <=> root.add-routes;
+                                            placeholder-text: Tr.placeholder-routes;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ignored-routes;
+                                        LineEdit {
+                                            text <=> root.ignored-routes;
+                                            placeholder-text: Tr.placeholder-routes;
+                                        }
+                                    }
+
+                                }
+                            }
+
+                            expander-certs := Expander {
+                                title: Tr.expand-certificates;
+                                icon-kind: "certs";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-no-cert-check;
+                                        Switch { checked <=> root.no-cert-check; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ca-cert;
+                                        PathLineEdit {
+                                            min-width: root.min-form-width;
+                                            text <=> root.ca-cert;
+                                            placeholder-text: Tr.placeholder-certs;
+                                            browse-clicked => { root.browse-ca-cert-clicked(); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            expander-ipsec := Expander {
+                                title: Tr.expand-ipsec;
+                                icon-kind: "ipsec";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-ike-persist;
+                                        Switch { checked <=> root.ike-persist; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-no-keepalive;
+                                        Switch { checked <=> root.no-keepalive; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-port-knock;
+                                        Switch { checked <=> root.port-knock; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ike-version;
+                                        ComboBox {
+                                            model: root.ike-versions;
+                                            current-index <=> root.ike-version-index;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ike-lifetime;
+                                        LineEdit {
+                                            text <=> root.ike-lifetime;
+                                            input-type: InputType.number;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.info-transport-type;
+                                        ComboBox {
+                                            model: root.transport-types;
+                                            current-index <=> root.transport-type-index;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+                                }
+                            }
+
+                            expander-misc := Expander {
+                                title: Tr.expand-misc;
+                                icon-kind: "misc";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-keychain;
+                                        Switch { checked <=> root.keychain; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-allow-forwarding;
+                                        Switch { checked <=> root.allow-forwarding; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-password-factor;
+                                        LineEdit {
+                                            text <=> root.password-factor;
+                                            input-type: InputType.number;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-ip-lease-time;
+                                        LineEdit {
+                                            text <=> root.ip-lease-time;
+                                            input-type: InputType.number;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-mtu;
+                                        LineEdit {
+                                            text <=> root.mtu;
+                                            input-type: InputType.number;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-tls-version-max;
+                                        ComboBox {
+                                            model: root.tls-version-max-options;
+                                            current-index <=> root.tls-version-max-index;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+                                }
+                            }
+
+                            expander-ui := Expander {
+                                title: Tr.expand-ui;
+                                icon-kind: "ui";
+
+                                VerticalLayout {
+                                    spacing: 0px;
+
+                                    FormToggleRow {
+                                        label: Tr.label-auto-connect;
+                                        Switch { checked <=> root.auto-connect; }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormToggleRow {
+                                        label: Tr.label-auto-disconnect;
+                                        Switch { checked <=> root.auto-disconnect; }
+                                    }
+
+                                    FormDivider { }
+
+                                    if root.icon-theme-visible: FormStackRow {
+                                        label: Tr.label-icon-theme;
+                                        // A ComboBox placed directly in a conditional row leaks its min-width into the row height, so keep it wrapped.
+                                        Rectangle {
+                                            min-width: root.min-form-width;
+                                            min-height: icon-theme-box.min-height;
+                                            preferred-height: icon-theme-box.preferred-height;
+
+                                            icon-theme-box := ComboBox {
+                                                width: parent.width;
+                                                model: root.icon-themes;
+                                                current-index <=> root.icon-theme-index;
+                                            }
+                                        }
+                                    }
+
+                                    if root.icon-theme-visible: FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-color-theme;
+                                        ComboBox {
+                                            model: root.icon-themes;
+                                            current-index <=> root.color-theme-index;
+                                            min-width: root.min-form-width;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-language;
+                                        ComboBox {
+                                            model: root.locales;
+                                            current-index <=> root.locale-index;
+                                        }
+                                    }
+
+                                    FormDivider { }
+
+                                    FormStackRow {
+                                        label: Tr.label-notification-level;
+                                        ComboBox {
+                                            model: root.notification-levels;
+                                            current-index <=> root.notification-level-index;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.error-text != "": HorizontalLayout {
+            padding: 8px;
+            Rectangle {
+                background: Palette.color-scheme == ColorScheme.dark
+                    ? #f4433622
+                    : #fdecea;
+                border-width: 1px;
+                border-radius: 8px;
+                border-color: #f4433666;
+                drop-shadow-blur: 8px;
+                drop-shadow-color: #00000022;
+                drop-shadow-offset-y: 1px;
+                clip: true;
+
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 4px;
+                    height: parent.height;
+                    background: #f44336;
+                }
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 14px;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    spacing: 12px;
+
+                    VerticalLayout {
+                        alignment: start;
+
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 11px;
+                            background: #f44336;
+
+                            Text {
+                                text: "!";
+                                color: white;
+                                font-weight: 700;
+                                font-size: 15px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: root.error-text;
+                            color: Palette.color-scheme == ColorScheme.dark
+                                ? #ffb4b0
+                                : #b71c1c;
+                            font-weight: 500;
+                            horizontal-alignment: left;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            padding: 6px;
+            alignment: end;
+            Rectangle {
+                height: 1px;
+                width: 100%;
+                border-width: 1px;
+                border-radius: 1px;
+                border-color: Palette.border;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 6px;
+            padding: 6px;
+
+            Button {
+                text: Tr.button-cancel;
+                min-width: 80px;
+                clicked => { root.cancel-clicked(); }
+            }
+            Button {
+                text: Tr.button-apply;
+                min-width: 80px;
+                clicked => { root.apply-clicked(); }
+            }
+            Button {
+                text: Tr.button-ok;
+                min-width: 80px;
+                primary: true;
+                clicked => { root.ok-clicked(); }
+            }
+        }
+    }
+
+    if root.confirm-visible: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea { }
+
+        FocusScope {
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    root.confirm-visible = false;
+                    root.confirm-cancel-clicked();
+                    return accept;
+                }
+                reject
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 400px;
+            height: dialog-layout.preferred-height;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 6px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 2px;
+
+            TouchArea { }
+
+            dialog-layout := VerticalLayout {
+                padding: 16px;
+                spacing: 16px;
+
+                Text {
+                    text: root.confirm-message;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 6px;
+
+                    Button {
+                        text: Tr.button-cancel;
+                        min-width: 80px;
+                        clicked => {
+                            root.confirm-visible = false;
+                            root.confirm-cancel-clicked();
+                        }
+                    }
+                    Button {
+                        text: Tr.button-ok;
+                        min-width: 80px;
+                        primary: true;
+                        clicked => {
+                            root.confirm-visible = false;
+                            root.confirm-ok-clicked();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.entry-visible: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea { }
+
+        FocusScope {
+            init => { entry-input.focus(); }
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    root.entry-visible = false;
+                    root.entry-cancel-clicked();
+                    return accept;
+                }
+                reject
+            }
+
+            Rectangle {
+                x: (root.width - self.width) / 2;
+                y: (root.height - self.height) / 2;
+                width: 400px;
+                height: entry-dialog-layout.preferred-height;
+                background: Palette.background;
+                border-color: Palette.border;
+                border-width: 1px;
+                border-radius: 6px;
+                drop-shadow-blur: 16px;
+                drop-shadow-color: #00000099;
+                drop-shadow-offset-y: 2px;
+
+                TouchArea { }
+
+                entry-dialog-layout := VerticalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+
+                    Text {
+                        text: root.entry-title;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: root.entry-label;
+                    }
+
+                    entry-input := LineEdit {
+                        text <=> root.entry-value;
+                        init => { self.select-all(); }
+                        accepted(text) => {
+                            if (text != "") {
+                                root.entry-visible = false;
+                                root.entry-ok-clicked(text);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 6px;
+
+                        Button {
+                            text: Tr.button-cancel;
+                            min-width: 80px;
+                            clicked => {
+                                root.entry-visible = false;
+                                root.entry-cancel-clicked();
+                            }
+                        }
+                        Button {
+                            text: Tr.button-ok;
+                            min-width: 80px;
+                            primary: true;
+                            enabled: entry-input.text != "";
+                            clicked => {
+                                root.entry-visible = false;
+                                root.entry-ok-clicked(entry-input.text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

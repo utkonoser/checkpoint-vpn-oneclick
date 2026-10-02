@@ -1,0 +1,320 @@
+# Dialog and buttons
+dialog-title = VPN-innstillinger
+button-ok = OK
+button-apply = Bruk
+button-cancel = Avbryt
+button-close = Lukk
+
+# Labels
+label-server-address = VPN-serveradresse
+label-auth-method = Autentiseringsmetode
+label-tunnel-type = Tunneltype
+label-cert-auth-type = Sertifikattype
+label-icon-theme = Ikon-tema
+label-color-theme = Fargetema
+label-username = Brukernavn
+label-username-required = Brukernavn er påkrevd for autentisering
+label-password = Passord
+label-no-dns = Ikke endre DNS-konfigurasjonen
+label-no-split-dns = Deaktiver delt DNS for systemd-resolved
+label-dns-servers = Tilleggs-DNS-servere
+label-ignored-dns-servers = Ignorerte DNS-servere
+label-search-domains = Tilleggssøkedomener
+label-ignored-domains = Ignorerte søkedomener
+label-routing-domains = Behandle mottatte søkedomener som rutedomener
+label-ca-cert = Server CA-rotsertifikat
+label-no-cert-check = Deaktiver alle TLS-sertifikatkontroller
+label-password-factor = Passordfaktorindeks, 1..N
+label-keychain = Lagre brukerpassord i nøkkelringen
+label-ike-lifetime = IPsec IKE SA-levetid, sekunder
+label-ike-persist = Lagre IPsec IKE-økt
+label-ike-version = IKE-protokollversjon
+label-no-keepalive = Deaktiver IPsec keepalive-pakker
+label-port-knock = Aktiver NAT-T port knocking
+label-no-routing = Ignorer alle mottatte ruter
+label-default-routing = Angi standardrute gjennom tunnelen
+label-add-routes = Tilleggsstatiske ruter
+label-ignored-routes = Ruter som skal ignoreres
+label-client-cert = Klientsertifikatfil
+label-driver-file = PKCS11-driverfil
+label-cert-password = PFX-passord
+label-pkcs11-pin = PKCS11-PIN
+label-cert-id = PKCS11-sertifikatets heksadesimale ID
+label-cert-name = Sertifikatets vanlige navn
+label-language = Språk
+label-system-default = Systemstandard
+label-username-password = Brukernavn og passord
+label-auto-connect = Koble til automatisk ved oppstart
+label-auto-disconnect = Koble fra automatisk ved avslutning
+label-ip-lease-time = Tilpasset IP-leieavtale tid, sekunder
+label-disable-ipv6 = Standardrute deaktiverer IPv6
+label-mtu = MTU
+label-profile-name = Profilnavn
+label-confirmation = Vennligst bekreft
+label-mobile-access = Mobiltilgang
+label-machine-cert-auth = Maskinsertifikat-autentisering
+label-supported-files = Støttede filtyper
+label-all-files = Alle filer
+label-cancel = Avbryt
+label-open = Åpne
+label-select-file = Velg en fil
+label-ca-cert-files = X.509-sertifikater
+label-allow-forwarding = Tillat pakkevideresending
+label-tls-version-max = Maksimal TLS-versjon
+label-pin-required = PIN kreves for HSM-enhetsautentisering
+label-pin = PIN
+label-notification-level = Varslingsnivå
+
+# Tabs and expanders
+tab-general = Generelt
+tab-advanced = Avansert
+expand-dns = DNS
+expand-routing = Ruting
+expand-certificates = Sertifikater
+expand-ipsec = IPsec
+expand-misc = Tilleggsinnstillinger
+expand-ui = Brukergrensesnitt
+
+# Error messages
+error-no-server-name = Ingen serveradresse er angitt
+error-no-auth = Ingen autentiseringsmetode er valgt
+error-file-not-exist = Filen finnes ikke: {$path}
+error-invalid-cert-id = Sertifikat-ID er ikke i heksadesimalt format: {$id}
+error-ca-root-not-exist = CA-rotsti finnes ikke: {$path}
+error-validation = Valideringsfeil
+error-profile-not-found = Profil ikke funnet: {$profile}
+error-user-input-canceled = Brukerinndata avbrutt
+error-connection-cancelled = Tilkobling avbrutt
+error-unknown-event = Ukjent hendelse: {$event}
+error-no-service-connection = Ingen tilkobling til tjenesten
+error-empty-input = Inndata kan ikke være tom
+error-invalid-object = Ugyldig objekt
+error-no-connector = Ingen tunnelkobling
+error-tunnel-disconnected = Tunnel frakoblet, siste melding: {$message}
+error-unexpected-reply = Uventet svar
+error-auth-failed = Autentisering mislyktes
+error-no-login-type = Manglende påkrevd parameter: login-type
+error-connection-timeout = Tilkoblingstimeout
+error-invalid-response = Ugyldig svar
+error-cannot-acquire-access-cookie = Kan ikke hente tilgangscookie!
+error-cannot-send-request = Kan ikke sende forespørsel til tjenesten
+error-cannot-read-reply = Kan ikke lese svar fra tjenesten
+error-no-ipv4 = Ingen IPv4-adresse for {$server}
+error-sysctl-not-converged = Sysctl konvergerte ikke: {$entry}
+error-not-challenge-state = Ikke en utfordringsstatus
+error-no-challenge = Ingen utfordring i dataene
+error-endless-challenges = Uendelig løkke av brukernavnutfordringer
+error-no-pkcs12 = Ingen PKCS12-sti og passord oppgitt
+error-no-pkcs8 = Ingen PKCS8 PEM-sti oppgitt
+error-no-pkcs11 = Ingen PKCS11 PIN oppgitt
+error-no-ipsec-session = Ingen IPsec-økt
+error-request-failed-error-code = Forespørsel mislyktes, feilkode: {$error_code}
+error-no-root-privileges = Dette programmet må kjøres som root-bruker!
+error-missing-required-parameters = Manglende påkrevde parametere: servernavn og/eller tilgangstype!
+error-missing-server-name = Manglende påkrevd parameter: servernavn!
+error-no-connector-for-challenge-code = Ingen kobling for å sende utfordringskode!
+error-probing-failed = Sondering mislyktes, serveren er ikke tilgjengelig via NATT-port!
+error-invalid-sexpr = Ugyldig sexpr: {$value}
+error-invalid-value = Ugyldig verdi
+error-udp-request-failed = Feil ved sending av UDP-forespørsel
+error-no-tty = Ingen TTY tilkoblet for brukerinndata
+error-invalid-auth-response = Ugyldig autentiseringssvar
+error-invalid-client-settings = Ugyldige klientinnstillinger
+error-invalid-cert-response = Ugyldig sertifikatsvar
+error-certificate-enrollment-failed = Sertifikatregistrering mislyktes, feilkode: {$code}
+error-missing-cert-path = Mangler sti til PKCS12-fil!
+error-missing-cert-password = Mangler PKCS12-passord!
+error-missing-reg-key = Mangler registreringsnøkkel!
+error-invalid-otp-reply = Ugyldig OTP-svar
+error-udp-encap-failed = Kan ikke sette UDP_ENCAP socket-opsjon, feilkode: {$code}
+error-so-no-check-failed = Kan ikke sette SO_NO_CHECK socket-opsjon, feilkode: {$code}
+error-keepalive-failed = Keepalive mislyktes
+error-receive-failed = Mottak mislyktes
+error-unknown-color-scheme = Ukjent fargeskjema-verdi
+error-cannot-determine-ip = Kan ikke bestemme standard-IP
+error-device-not-found = Enhet {$device} ikke funnet
+error-invalid-command = Ugyldig kommando: {$command}
+error-otp-browser-failed = Kan ikke få OTP fra nettleser
+error-invalid-operation-mode = Ugyldig driftsmodus
+error-invalid-tunnel-type = Ugyldig tunneltype
+error-invalid-cert-type = Ugyldig sertifikattype
+error-invalid-icon-theme = Ugyldig ikon-tema
+error-no-natt-reply = Ingen NATT-svar
+error-not-implemented = Ikke implementert
+error-unknown-packet-type = Ukjent pakketype
+error-no-sender = Ingen avsender
+error-empty-ccc-session = Tom CCC-økt
+error-no-om-session = Ingen økt i svaret, VPN-serveren er kanskje tom for OM-lisenser
+error-identity-timeout = Timeout mens du venter på identitetssvar, er tilgangstypen korrekt?
+error-invalid-transport-type = Ugyldig transporttype
+error-invalid-ike-version = Ugyldig IKE-versjon
+error-invalid-tls-version-max = Ugyldig maksimal TLS-versjon
+error-certificate-verify-failed = TLS-sertifikatvalidering mislyktes. Serverens sertifikat er ugyldig, utløpt eller ikke betrodd.
+error-invalid-gateway-info = Ugyldig gateway-informasjonssvar
+error-invalid-notification-level = Ugyldig varslingsnivå
+error-unsupported-login-type = Innloggingstypen støttes ikke
+
+# Placeholder texts
+placeholder-domains = Domener separert med komma
+placeholder-ip-addresses = IP-adresser separert med komma
+placeholder-routes = Ruter separert med komma i formatet x.x.x.x/x
+placeholder-certs = PEM- eller DER-filer separert med komma
+
+# Tunnel types
+tunnel-type-ipsec = IPsec
+tunnel-type-ssl = SSL (foreldet)
+
+# Certificate types
+cert-type-none = Ingen
+cert-type-pfx = PFX (PKCS12)-nøkkellager
+cert-type-pem = PEM-fil med sertifikat og privat nøkkel
+cert-type-hw = HSM-enhet
+cert-type-system = Systemets sertifikatlager
+
+# Transport types
+transport-type-autodetect = Automatisk oppdag
+transport-type-kernel = UDP XFRM
+transport-type-tcpt = TCPT TUN
+transport-type-udp = UDP TUN
+
+# IKE versions
+ike-version-autodetect = Automatisk oppdag
+ike-version-1 = IKEv1
+ike-version-2 = IKEv2
+
+# Notification levels
+notification-level-off = Av
+notification-level-minimal = Minimalt
+notification-level-standard = Standard
+notification-level-verbose = Detaljert
+
+# Icon themes
+theme-autodetect = Automatisk oppdag
+theme-dark = Mørk
+theme-light = Lys
+
+# Connection info
+info-connected-since = Tilkoblet siden
+info-server-name = Servernavn
+info-user-name = Brukernavn
+info-login-type = Innloggingstype
+info-tunnel-type = Tunneltype
+info-transport-type = IPsec-transporttype
+info-ip-address = IP-adresse
+info-dns-servers = DNS-servere
+info-search-domains = Søkedomener
+info-interface = Grensesnitt
+info-dns-configured = DNS konfigurert
+info-routing-configured = Ruting konfigurert
+info-default-route = Standardrute
+info-connection-profile = Tilkoblingsprofil
+info-rtt = RTT
+info-bytes-received = Mottatte byte
+info-bytes-sent = Sendte byte
+info-rate-received = Mottakshastighet
+info-rate-sent = Sendehastighet
+info-packets-received = Mottatte pakker
+info-packets-sent = Sendte pakker
+info-ike-initiator-spi = IKE SA-initiator-SPI
+info-ike-responder-spi = IKE SA-responder-SPI
+info-ike-lifetime = IKE SA-levetid
+info-ike-timestamp = IKE SA-tidsstempel
+info-ike-expiration = IKE SA-utløp
+info-esp-spi-in = Innkommende ESP-SPI
+info-esp-spi-out = Utgående ESP-SPI
+info-esp-encryption-in = Innkommende ESP-kryptering
+info-esp-authentication-in = Innkommende ESP-autentisering
+info-esp-encryption-out = Utgående ESP-kryptering
+info-esp-authentication-out = Utgående ESP-autentisering
+info-ipsec-sa = IPsec SA
+
+# Application
+app-title = SNX-RS VPN-klient
+app-connection-error = Tilkoblingsfeil
+app-connection-success = Tilkobling vellykket
+
+# About dialog
+about-version = Versjon
+about-authors = Forfattere
+about-license = Lisens
+
+# Authentication
+auth-dialog-title = VPN-autentiseringsfaktor
+auth-dialog-message = Skriv inn din autentiseringsfaktor:
+
+# Status dialog
+status-dialog-title = Tilkoblingsinformasjon
+status-button-copy = Kopier
+status-show-stats = Vis sanntidsstatistikk
+status-button-settings = Innstillinger
+status-button-connect = Koble til
+status-button-disconnect = Koble fra
+
+# Tray menu
+tray-menu-connect = Koble til
+tray-menu-disconnect = Koble fra
+tray-menu-status = Tilkoblingsstatus...
+tray-menu-settings = Innstillinger...
+tray-menu-about = Om...
+tray-menu-exit = Avslutt
+
+# CLI Messages
+cli-identity-provider-auth = For autentisering via identitetsleverandør, åpne følgende URL i nettleseren:
+cli-tunnel-connected = Tunnel tilkoblet, trykk Ctrl+C for å avslutte.
+cli-tunnel-disconnected = Tunnel frakoblet
+cli-another-instance-running = En annen forekomst av snx-rs kjører allerede
+cli-app-terminated = Applikasjon avsluttet av signal
+cli-mobile-access-auth = For autentisering av mobiltilgang, logg inn på { $url }, finn deretter et brukerpassord i hex-format i HTML-kildekoden til siden og skriv det inn her.
+cli-certificate-enrolled = Sertifikatet er registrert.
+cli-no-ike-state = Ingen IKE SA-tilstand!
+cli-rekey-state-pending = IKE SA-tilstanden er ikke endret ennå, viser forrige tilstand
+
+# Connection Messages
+connection-connected-to = Koblet til {$server}
+connection-connecting-to = Kobler til {$server}
+connection-disconnected-from = Koblet fra {$server}
+connection-disconnecting-ike-expiry = Kobles snart fra på grunn av utløpt IKE SA
+connection-rekeyed = Nøklene for IPsec-tunnelen ble fornyet
+
+# Languages
+language-cs-CZ = Tsjekkisk
+language-da-DK = Dansk
+language-de-DE = Tysk
+language-en-US = Engelsk
+language-es-ES = Spansk
+language-fi-FI = Finsk
+language-fr-FR = Fransk
+language-hr-HR = Kroatisk
+language-it-IT = Italiensk
+language-nl-NL = Nederlandsk
+language-no-NO = Norsk
+language-pl-PL = Polsk
+language-pt-PT = Portugisisk
+language-pt-BR = Brasiliansk portugisisk
+language-ru-RU = Russisk
+language-sk-SK = Slovakisk
+language-sv-SE = Svensk
+
+# Connection status messages
+connection-status-disconnected = Koplet fra
+connection-status-connected = Tilkoblet
+connection-status-connecting = Kobler til
+connection-status-connected-since = Koblet til siden: {$since}
+connection-status-mfa-pending = Venter på MFA: {$mfa_type}
+
+# Login options
+login-options-server-address = Serveradresse
+login-options-server-ip = Server-IP
+login-options-client-enabled = Klient aktivert
+login-options-supported-protocols = Støttede protokoller
+login-options-preferred-protocol = Foretrukket protokoll
+login-options-tcpt-port = TCPT-port
+login-options-natt-port = NATT-port
+login-options-internal-ca-fingerprint = Intern CA-fingeravtrykk
+
+# Connection profiles
+profile-delete-prompt = Er du sikker på at du vil slette den valgte profilen?
+profile-default-name = Standard
+profile-new-title = Ny tilkoblingsprofil
+profile-rename-title = Gi nytt navn til tilkoblingsprofil
+profiles-header = Tilkoblingsprofiler

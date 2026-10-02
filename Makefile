@@ -1,4 +1,4 @@
-.PHONY: generate build test install dmg clean forget-extra-apps
+.PHONY: generate build test install dmg clean forget-extra-apps helper
 
 XCODEBUILD = xcodebuild \
 	-project CheckpointVPNOneClick.xcodeproj \
@@ -12,6 +12,9 @@ XCODEBUILD = xcodebuild \
 generate:
 	xcodegen generate
 
+helper:
+	./Scripts/build-tunnel-helper.sh
+
 build: generate
 	mkdir -p build && touch build/.metadata_never_index
 	$(XCODEBUILD) build
@@ -24,11 +27,12 @@ test: generate
 forget-extra-apps:
 	./Scripts/remove-extra-apps.sh
 
-install:
+install: helper
 	./Scripts/install.sh
 
-dmg: generate
+dmg: generate helper
 	./Scripts/package-dmg.sh
 
 clean:
-	rm -rf build
+	rm -rf build TunnelHelper/dist
+	rm -rf Vendor/snx-rs/target

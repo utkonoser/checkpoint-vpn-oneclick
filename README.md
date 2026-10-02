@@ -1,29 +1,30 @@
 # Checkpoint VPN One-Click
 
-Menu bar helper that connects **Check Point** VPN via [snx-rs](https://github.com/ancwrd1/snx-rs) (`snxctl`) using a saved password + fresh TOTP — no official Check Point UI automation.
+Menu bar app for **Check Point** remote access on macOS. It ships its own tunnel helper (vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork) and drives it with a saved password + live TOTP — no official Check Point UI, no separate `SNX-RS.pkg`.
 
-This is not affiliated with Check Point. Install snx-rs separately; this app only drives its CLI.
+**Work VPN only (split-tunnel):** corporate routes come from the gateway; the default internet route stays free for [Karing](https://karing.app) (or similar).
 
-Use this app for **work VPN only** (split-tunnel). For the rest of the internet, run [Karing](https://karing.app) (or similar) with Direct rules for work domains / RF IPs so the two do not fight over the default route.
+Not affiliated with Check Point.
 
 ## Features
 
-- **Connect / Disconnect** Check Point through `snxctl` (password + MFA code)
-- **Split-tunnel by default**: `default-route=false` — keeps gateway-pushed corporate routes, does not own all internet
-- **Per-site secrets**: each VPN hostname has its own password and TOTP (Base32, `otpauth://`, or QR)
-- **Site picker** in the menu bar (`Check Point site`)
-- **Live TOTP** preview in Settings for the selected site
-- **Login type** setting (from `snx-rs -m info`, e.g. `vpn_VPN_RA`)
-- **Work domains** list + **Copy Karing rules** for Direct diversion alongside Karing
+- **Connect / Disconnect** via bundled `CheckpointVPNTunnel` + `checkpoint-vpnctl`
+- **Embedded helper**: first Connect (or **Install / repair tunnel helper…**) installs LaunchDaemon `local.checkpointvpn.tunnel` (admin password once)
+- **Split-tunnel** (`default-route=false`) — keeps Office Mode / GW routes, does not own all traffic
+- **Per-site secrets**: password + TOTP (Base32, `otpauth://`, or QR); clear fields with Saved / Not set status
+- **Live TOTP** preview in Settings
+- **Site picker** in the menu bar
+- **Work domains** + **Copy Karing rules** for Direct diversion
+- **Ignore server certificate** toggle (common on corporate gateways)
+- **Restart / repair** tunnel helper after sleep
 
-Secrets are stored in `~/Library/Application Support/CheckpointVPNOneClick/secrets.plist` (mode `0600`), not in the login Keychain — so ad-hoc rebuilds do not spam Keychain password dialogs.
+Secrets live in `~/Library/Application Support/CheckpointVPNOneClick/secrets.plist` (mode `0600`), not in the login Keychain.
 
 ## Download
 
-- [v1.0.0 DMG](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/tag/v1.0.0)
 - [Latest release](https://github.com/utkonoser/checkpoint-vpn-oneclick/releases/latest)
 
-The GitHub build is ad-hoc signed (no Apple Developer ID). Drag the app to `/Applications`, then right-click → **Open** the first time, or run:
+Builds are **ad-hoc signed** (no Apple Developer ID). After drag-and-drop to `/Applications`, right-click → **Open**, or:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app
@@ -31,69 +32,79 @@ xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app
 
 ## Requirements
 
-- macOS 14+
-- [snx-rs](https://github.com/ancwrd1/snx-rs/releases) — install **SNX-RS.pkg** so `snxctl` / `snx-rs` and the LaunchDaemon are present (`/usr/local/bin/snxctl`)
-- Optional: [Karing](https://karing.app) (or another TUN proxy client) for non-corporate traffic
+| Need | Notes |
+|------|--------|
+| macOS 14+ | |
+| Admin once | Installs `/Library/Application Support/CheckpointVPNTunnel` + LaunchDaemon |
+| Optional Karing | Non-corporate traffic / proxy |
+| From source | Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), Rust (`cargo`) for the helper |
 
-If the official Check Point Endpoint Security client is also installed, **disconnect it manually** before using snx-rs — route conflicts are on you.
+**Conflicts:** disconnect the official Check Point Endpoint client and upstream snx-rs (`com.github.snx-rs`) before connecting — two IPsec stacks fight over routes.
 
-Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) are needed only to build from source. Skip them if you install the DMG.
+## Quick setup
 
-## Setup (work VPN)
+1. Install / open the app (`~/Applications` or `/Applications`).
+2. **Settings → VPN:** site (hostname), username, login type (usually `vpn_VPN_RA`).
+3. **Settings → Secrets:** enter password and TOTP (or import QR), then **Save secrets**. Status shows **Saved** / **Not set**.
+4. Optional: **Work domains** (one per line) → **Copy Karing rules**.
+5. **Install / repair tunnel helper…** (or Connect — install runs when needed).
+6. **Connect** from the menu bar or Settings.
 
-1. Install snx-rs (`SNX-RS.pkg` from the [releases](https://github.com/ancwrd1/snx-rs/releases) page).
-2. Discover login type (once per gateway):
+Discover login types after the helper is installed:
 
-   ```bash
-   snx-rs -m info -s vpn.example.com
-   ```
+```bash
+/Library/Application\ Support/CheckpointVPNTunnel/CheckpointVPNTunnel -m info -s vpn.example.com
+```
 
-   Use the `vpn_XXX` id (e.g. `vpn_VPN_RA`) in Settings → Login type.
-3. Open this app from `~/Applications` or `/Applications`.
-4. **Settings**:
-   - Site = VPN hostname
-   - Username, login type
-   - Password + TOTP for **that** site
-   - Optional: work domains (one per line) for Karing export
-5. Connect from the menu bar or Settings.
+## Using with Karing
 
-Check Point via snx-rs does **not** need Accessibility.
+Goal: work nets → this app’s tunnel; everything else → Karing; RF / work domains → **Direct** in Karing so they hit macOS routes → utun.
 
-## Using with Karing (both at once)
+1. Install [Karing](https://karing.app), add subscription, enable TUN / system proxy as required.
+2. **Diversion → Country / Region:** Russia (or yours) so geoip RF → **Direct**.
+3. Custom diversion group (e.g. `work-vpn`): paste Domain Suffixes from **Copy Karing rules** → action **Direct**.
+4. Start **Karing** first, then **Connect** here.
 
-Goal: **work nets → snx-rs**, **everything else → Karing**, **RF IPs / work domains → Direct** in Karing so they follow macOS routes into the work tunnel.
-
-1. Install [Karing](https://karing.app) and add your subscription / nodes.
-2. Enable Karing’s TUN / system proxy as required by the app.
-3. **Diversion → Country / Region:** set to **Russia** (or your region) so built-in **geoip** rules for RF use **Direct** (traffic stays on the system stack instead of the proxy).
-4. **Custom diversion group** (e.g. `work-vpn`):
-   - In this app: Settings → Work domains → **Copy Karing rules**
-   - In Karing: Diversion → Custom diversion group → add each **Domain Suffix** from the clipboard → action **Direct**
-5. Recommended order: start **Karing** first, then **Connect** work VPN here.
-6. If corporate sites still go through the proxy: check Karing diversion detect / rule priority (Direct group must hit). If random internet goes into snx-rs: confirm connect conf has `default-route=false` (this app sets it automatically).
+If corp sites still go through the proxy, check Karing hit detection / rule order. If random internet goes into the work tunnel, confirm split-tunnel (`default-route=false` — set automatically).
 
 ```text
 Browser / apps
-    ├─ work domain (Karing Direct) ──► macOS routes ──► snx-rs (corp CIDRs from gateway)
-    ├─ RF IP (geoip Direct)        ──► macOS routes ──► normal / snx if GW pushed that net
-    └─ rest                        ──► Karing proxy node
+    ├─ work domain (Karing Direct) ──► macOS routes ──► CheckpointVPNTunnel (GW CIDRs)
+    ├─ RF IP (geoip Direct)        ──► macOS routes
+    └─ rest                        ──► Karing node
 ```
+
+## Architecture (short)
+
+| Piece | Role |
+|-------|------|
+| Swift menu bar app | UI, secrets, TOTP, connect conf |
+| `CheckpointVPNTunnel` | Root daemon (snx-rs command mode fork) |
+| Socket | `/var/run/checkpoint-vpn.sock` |
+| LaunchDaemon | `local.checkpointvpn.tunnel` |
+
+Details: [docs/tunnel-engine.md](docs/tunnel-engine.md). Licensing / AGPL: [THIRD_PARTY.md](THIRD_PARTY.md). Manual checks: [docs/manual-test-plan.md](docs/manual-test-plan.md).
 
 ## Build from source
 
 ```bash
-make install
+make helper    # Vendor/snx-rs → TunnelHelper/dist
+make install   # sign, embed helper, install to ~/Applications
 ```
-
-Builds, signs, installs to `~/Applications/CheckpointVPNOneClick.app`, and removes extra copies under the project `build/` tree so Launchpad/Spotlight stay to one app.
-
-Other targets:
 
 ```bash
-make build    # compile only (then cleans extra .app copies if an install exists)
+make build
 make test
-make generate # regenerate CheckpointVPNOneClick.xcodeproj from project.yml
-make dmg      # local DMG under build/
+make generate  # xcodegen → .xcodeproj
+make dmg       # local DMG under build/
 ```
 
-To publish a GitHub release DMG: **Actions → Release DMG → Run workflow**, tag like `v1.0.1`.
+GitHub release DMG: **Actions → Release DMG → Run workflow** (needs Rust on the runner; embeds the helper).
+
+### After sleep / helper issues
+
+Settings → **Restart tunnel helper…** or **Install / repair…**. Equivalent:
+
+```bash
+sudo launchctl kickstart -k system/local.checkpointvpn.tunnel
+```

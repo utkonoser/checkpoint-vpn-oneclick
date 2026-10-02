@@ -1,0 +1,403 @@
+use std::net::{IpAddr, Ipv4Addr};
+
+use isakmp::{
+    crypto::{CipherType, DigestType},
+    model::{EspAuthentication, EspCryptMaterial},
+};
+use netlink_packet_xfrm::{
+    constants::{
+        IPPROTO_ESP, UDP_ENCAP_ESPINUDP, XFRM_MODE_TUNNEL, XFRM_POLICY_IN, XFRM_POLICY_OUT, XFRM_STATE_AF_UNSPEC,
+    },
+    nlas::UserTemplate,
+};
+use rand::random;
+use rtnetlink::{LinkMessageBuilder, LinkXfrm};
+use tracing::{debug, trace};
+
+use crate::{
+    model::IPsecSession,
+    platform::{DeviceConfig, IPsecConfigurator, NetworkInterface, Platform, PlatformAccess},
+};
+
+fn new_xfrm_connection() -> anyhow::Result<xfrmnetlink::Handle> {
+    let (connection, handle, _) = xfrmnetlink::new_connection()?;
+    tokio::spawn(connection);
+    Ok(handle)
+}
+
+struct XfrmLink<'a> {
+    device_config: &'a DeviceConfig,
+    if_id: u32,
+    handle: rtnetlink::Handle,
+}
+
+impl<'a> XfrmLink<'a> {
+    fn new(device_config: &'a DeviceConfig, if_id: u32) -> anyhow::Result<Self> {
+        let handle = super::new_netlink_connection()?;
+
+        Ok(Self {
+            device_config,
+            if_id,
+            handle,
+        })
+    }
+
+    async fn add(&self) -> anyhow::Result<()> {
+        let msg = LinkMessageBuilder::<LinkXfrm>::new(&self.device_config.name)
+            .if_id(self.if_id)
+            .up()
+            .build();
+
+        super::run_netlink_op(self.handle.link().add(msg).execute(), libc::EEXIST).await?;
+
+        Platform::get()
+            .new_network_interface()
+            .configure_device(self.device_config)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn delete(&self) -> anyhow::Result<()> {
+        Platform::get()
+            .new_network_interface()
+            .delete_device(&self.device_config.name)
+            .await
+    }
+}
+
+struct XfrmState<'a> {
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    src_port: u16,
+    dest_port: u16,
+    if_id: u32,
+    params: &'a EspCryptMaterial,
+}
+
+impl XfrmState<'_> {
+    fn auth_alg_as_xfrm_name(&self) -> anyhow::Result<&'static str> {
+        match self.params.auth {
+            Some(EspAuthentication {
+                digest: DigestType::Sha1,
+                ..
+            }) => Ok("hmac(sha1)"),
+            Some(EspAuthentication {
+                digest: DigestType::Sha256,
+                ..
+            }) => Ok("hmac(sha256)"),
+            Some(EspAuthentication {
+                digest: DigestType::Sha384,
+                ..
+            }) => Ok("hmac(sha384)"),
+            Some(EspAuthentication {
+                digest: DigestType::Sha512,
+                ..
+            }) => Ok("hmac(sha512)"),
+            other => anyhow::bail!("Unsupported auth algorithm: {:?}", other),
+        }
+    }
+    fn enc_alg_as_xfrm_name(&self) -> anyhow::Result<&'static str> {
+        match self.params.cipher {
+            CipherType::Aes128Cbc | CipherType::Aes192Cbc | CipherType::Aes256Cbc => Ok("cbc(aes)"),
+            CipherType::DesEde3Cbc => Ok("cbc(des3_ede)"),
+            other => anyhow::bail!("Unsupported encryption algorithm: {:?}", other),
+        }
+    }
+
+    async fn add(&self) -> anyhow::Result<()> {
+        let handle = new_xfrm_connection()?;
+        let src: IpAddr = self.src.into();
+        let dst: IpAddr = self.dst.into();
+        let trunc_len = self.params.auth.map(|a| (a.icv_len * 8) as u32).unwrap_or_default();
+
+        let mut request = handle
+            .state()
+            .add(src, dst)
+            .protocol(IPPROTO_ESP)
+            .spi(self.params.spi)
+            .mode(XFRM_MODE_TUNNEL)
+            .flags(XFRM_STATE_AF_UNSPEC)
+            .ifid(self.if_id)
+            .encapsulation(
+                UDP_ENCAP_ESPINUDP,
+                self.src_port,
+                self.dest_port,
+                Ipv4Addr::UNSPECIFIED.into(),
+            );
+
+        request = if !self.params.cipher.is_aead() {
+            request
+                .authentication_trunc(self.auth_alg_as_xfrm_name()?, &self.params.sk_a.to_vec(), trunc_len)?
+                .encryption(self.enc_alg_as_xfrm_name()?, &self.params.sk_e.to_vec())?
+        } else {
+            request.encryption_aead(
+                "rfc4106(gcm(aes))",
+                &self.params.sk_e.to_vec(),
+                self.params.cipher.icv_len() as u32 * 8,
+            )?
+        };
+
+        request.execute().await?;
+
+        Ok(())
+    }
+
+    async fn delete(&self) -> anyhow::Result<()> {
+        let handle = new_xfrm_connection()?;
+        let src: IpAddr = self.src.into();
+        let dst: IpAddr = self.dst.into();
+
+        handle
+            .state()
+            .delete(src, dst)
+            .protocol(IPPROTO_ESP)
+            .spi(self.params.spi)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
+}
+
+struct XfrmPolicy {
+    dir: u8,
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    if_id: u32,
+}
+
+impl XfrmPolicy {
+    async fn add(&self) -> anyhow::Result<()> {
+        let handle = new_xfrm_connection()?;
+        let src: IpAddr = self.src.into();
+        let dst: IpAddr = self.dst.into();
+
+        let mut tmpl = UserTemplate::default();
+        tmpl.source(&src);
+        tmpl.destination(&dst);
+        tmpl.protocol(IPPROTO_ESP);
+        tmpl.mode(XFRM_MODE_TUNNEL);
+
+        handle
+            .policy()
+            .add(Ipv4Addr::UNSPECIFIED.into(), 0, Ipv4Addr::UNSPECIFIED.into(), 0)
+            .direction(self.dir)
+            .ifid(self.if_id)
+            .add_template(tmpl)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
+
+    async fn delete(&self) -> anyhow::Result<()> {
+        let handle = new_xfrm_connection()?;
+
+        handle
+            .policy()
+            .delete(Ipv4Addr::UNSPECIFIED.into(), 0, Ipv4Addr::UNSPECIFIED.into(), 0)
+            .direction(self.dir)
+            .ifid(self.if_id)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+enum CommandType {
+    Add,
+    Delete,
+}
+
+pub struct XfrmConfigurator {
+    device_config: DeviceConfig,
+    ipsec_session: IPsecSession,
+    src_ip: Ipv4Addr,
+    if_id: u32,
+    src_port: u16,
+    dest_ip: Ipv4Addr,
+    dest_port: u16,
+}
+
+impl XfrmConfigurator {
+    pub fn new(
+        device_config: DeviceConfig,
+        ipsec_session: IPsecSession,
+        src_ip: Ipv4Addr,
+        src_port: u16,
+        dest_ip: Ipv4Addr,
+        dest_port: u16,
+    ) -> Self {
+        let if_id = random();
+
+        Self {
+            device_config,
+            ipsec_session,
+            src_ip,
+            dest_ip,
+            if_id,
+            src_port,
+            dest_port,
+        }
+    }
+
+    fn new_xfrm_link(&self) -> anyhow::Result<XfrmLink<'_>> {
+        XfrmLink::new(&self.device_config, self.if_id)
+    }
+
+    async fn configure_xfrm_state(
+        &self,
+        command: CommandType,
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+        params: &EspCryptMaterial,
+    ) -> anyhow::Result<()> {
+        let state = XfrmState {
+            src,
+            dst,
+            src_port: self.src_port,
+            dest_port: self.dest_port,
+            if_id: self.if_id,
+            params,
+        };
+        match command {
+            CommandType::Add => state.add().await?,
+            CommandType::Delete => state.delete().await?,
+        }
+
+        Ok(())
+    }
+
+    async fn configure_xfrm_policy(
+        &self,
+        command: CommandType,
+        dir: u8,
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+    ) -> anyhow::Result<()> {
+        let policy = XfrmPolicy {
+            dir,
+            src,
+            dst,
+            if_id: self.if_id,
+        };
+        match command {
+            CommandType::Add => policy.add().await?,
+            CommandType::Delete => policy.delete().await?,
+        }
+
+        Ok(())
+    }
+
+    async fn setup_xfrm_state_and_policies(&self) -> anyhow::Result<()> {
+        self.configure_xfrm_state(CommandType::Add, self.src_ip, self.dest_ip, &self.ipsec_session.esp_out)
+            .await?;
+        self.configure_xfrm_state(CommandType::Add, self.dest_ip, self.src_ip, &self.ipsec_session.esp_in)
+            .await?;
+
+        self.configure_xfrm_policy(CommandType::Add, XFRM_POLICY_OUT, self.src_ip, self.dest_ip)
+            .await?;
+        self.configure_xfrm_policy(CommandType::Add, XFRM_POLICY_IN, self.dest_ip, self.src_ip)
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl IPsecConfigurator for XfrmConfigurator {
+    async fn configure(&self) -> anyhow::Result<()> {
+        debug!("Source IP: {}", self.src_ip);
+        debug!("Target IP: {}", self.dest_ip);
+
+        self.new_xfrm_link()?.add().await?;
+        self.setup_xfrm_state_and_policies().await?;
+
+        Ok(())
+    }
+
+    async fn rekey(&mut self, session: &IPsecSession) -> anyhow::Result<()> {
+        trace!(
+            "Rekeying XFRM state with new session: IN: {:?}, OUT: {:?}",
+            session.esp_in, session.esp_out
+        );
+
+        self.configure_xfrm_state(CommandType::Add, self.src_ip, self.dest_ip, &session.esp_out)
+            .await?;
+
+        self.configure_xfrm_state(CommandType::Add, self.dest_ip, self.src_ip, &session.esp_in)
+            .await?;
+
+        let _ = self
+            .configure_xfrm_state(
+                CommandType::Delete,
+                self.src_ip,
+                self.dest_ip,
+                &self.ipsec_session.esp_out,
+            )
+            .await;
+
+        let _ = self
+            .configure_xfrm_state(
+                CommandType::Delete,
+                self.dest_ip,
+                self.src_ip,
+                &self.ipsec_session.esp_in,
+            )
+            .await;
+
+        let old_address = self.ipsec_session.ipv4net_address();
+        let new_address = session.ipv4net_address();
+
+        self.ipsec_session = session.clone();
+
+        if old_address != new_address {
+            debug!(
+                "IP address changed from {} to {}, replacing it for device {}",
+                old_address, new_address, self.device_config.name
+            );
+            Platform::get()
+                .new_network_interface()
+                .replace_ip_address(&self.device_config.name, old_address, new_address)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn cleanup(&self) {
+        let _ = self
+            .configure_xfrm_state(
+                CommandType::Delete,
+                self.src_ip,
+                self.dest_ip,
+                &self.ipsec_session.esp_out,
+            )
+            .await;
+
+        let _ = self
+            .configure_xfrm_state(
+                CommandType::Delete,
+                self.dest_ip,
+                self.src_ip,
+                &self.ipsec_session.esp_in,
+            )
+            .await;
+
+        let _ = self
+            .configure_xfrm_policy(CommandType::Delete, XFRM_POLICY_OUT, self.src_ip, self.dest_ip)
+            .await;
+
+        let _ = self
+            .configure_xfrm_policy(CommandType::Delete, XFRM_POLICY_IN, self.dest_ip, self.src_ip)
+            .await;
+
+        if let Ok(link) = self.new_xfrm_link() {
+            let _ = link.delete().await;
+        };
+    }
+}

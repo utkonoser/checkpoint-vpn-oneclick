@@ -18,10 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install XcodeGen
+      - name: Install XcodeGen + Rust
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
-        run: brew install xcodegen
+        run: |
+          brew install xcodegen
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Build DMG
         env:
@@ -35,5 +38,5 @@ jobs:
           tag="${{ inputs.tag }}"
           gh release create "$tag" build/CheckpointVPNOneClick-*.dmg \
             --title "Checkpoint VPN One-Click $tag" \
-            --notes "Ad-hoc signed macOS 14+ universal DMG. Requires snx-rs (SNX-RS.pkg). First launch: right-click the app → Open (Gatekeeper). Split-tunnel work VPN; use Karing (or similar) for the rest." \
+            --notes "Ad-hoc signed macOS 14+ universal DMG with embedded CheckpointVPNTunnel helper (snx-rs AGPL fork). First launch: right-click → Open. First Connect asks for admin once to install the LaunchDaemon. Split-tunnel work VPN; use Karing for the rest. Source for the helper: Vendor/snx-rs in this repo." \
             --latest

@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/snxcore", "crates/i18n", "apps/snxctl", "apps/snx-rs", "apps/snx-rs-gui"]
+resolver = "2"
+
+[workspace.package]
+version = "6.4.1"
+license = "AGPL-3.0"
+edition = "2024"
+authors = ["Dmitry Pankratov <dmitry@pankratov.net>"]
+description = "Check Point VPN client"
+readme = "README.md"
+repository = "https://github.com/ancwrd1/snx-rs"
+keywords = ["snx", "vpn", "ipsec"]
+publish = false
+
+[workspace.dependencies]
+clap_complete ="4"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unexpected_cfgs = { level = "allow" }
+
+[profile.release]
+panic = "abort"
+
+[profile.lto]
+inherits = "release"
+strip = true
+lto = true
+codegen-units = 1

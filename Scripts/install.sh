@@ -108,6 +108,25 @@ fi
 
 codesign -dv --verbose=2 "$APP" || true
 
+# Embed CheckpointVPNTunnel + checkpoint-vpnctl for first-run install.
+if [[ ! -x "$ROOT/TunnelHelper/dist/CheckpointVPNTunnel" ]]; then
+  "$ROOT/Scripts/build-tunnel-helper.sh"
+fi
+"$ROOT/Scripts/bundle-tunnel-helper.sh" "$APP"
+
+# Re-sign after adding Resources (signature covers the whole bundle).
+if [[ -n "$IDENTITY" ]]; then
+  codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" \
+    --identifier "local.checkpointvpn.oneclick" \
+    --entitlements "$ROOT/CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements" \
+    "$APP"
+else
+  codesign --force --sign - \
+    --identifier "local.checkpointvpn.oneclick" \
+    --entitlements "$ROOT/CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements" \
+    "$APP"
+fi
+
 osascript -e 'tell application "Checkpoint VPN" to quit' >/dev/null 2>&1 || true
 pkill -f "/CheckpointVPNOneClick.app/Contents/MacOS/CheckpointVPNOneClick" >/dev/null 2>&1 || true
 sleep 0.4
@@ -121,3 +140,4 @@ xattr -dr com.apple.quarantine "$INSTALL" 2>/dev/null || true
 echo "Installed $INSTALL"
 open "$INSTALL"
 echo "Quit from the menu bar and reopen ~/Applications/CheckpointVPNOneClick.app if it was already running."
+echo "First Connect may ask for an admin password to install the tunnel helper LaunchDaemon."

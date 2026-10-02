@@ -1,0 +1,331 @@
+use std::{
+    net::Ipv4Addr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+use anyhow::Context;
+use chrono::Local;
+use i18n::tr;
+use ipnet::Ipv4Net;
+use tokio::{net::UdpSocket, sync::mpsc, time::MissedTickBehavior};
+use tracing::{debug, warn};
+
+use crate::{
+    model::{
+        ConnectionInfo, IPsecSession, TunnelSession,
+        params::{TunnelParams, TunnelType},
+    },
+    platform::{
+        DeviceConfig, IPsecConfigurator, NetworkInterface, Platform, PlatformAccess, ResolverConfig, RoutingConfig,
+        RoutingConfigurator, UdpEncapType, UdpSocketExt,
+    },
+    tunnel::{
+        GatewayConnector, TunnelCommand, TunnelEvent, VpnTunnel,
+        ipsec::{keepalive::KeepaliveRunner, natt::start_natt_listener, scv::ScvRunner},
+    },
+    util,
+};
+
+pub(crate) struct NativeIPsecTunnel {
+    xfrm_configurator: Box<dyn IPsecConfigurator + Send + Sync>,
+    keepalive_runner: KeepaliveRunner,
+    scv_runner: ScvRunner,
+    natt_socket: Arc<UdpSocket>,
+    ready: Arc<AtomicBool>,
+    params: Arc<TunnelParams>,
+    session: Arc<TunnelSession>,
+    device_name: String,
+    gateway_address: Ipv4Addr,
+    subnets: Vec<Ipv4Net>,
+}
+
+impl NativeIPsecTunnel {
+    pub(crate) async fn create(
+        params: Arc<TunnelParams>,
+        session: Arc<TunnelSession>,
+        gateway_connector: Arc<dyn GatewayConnector + Send + Sync>,
+    ) -> anyhow::Result<Self> {
+        let ipsec_session = session.ipsec_session().with_context(|| tr!("error-no-ipsec-session"))?;
+
+        let gateway_information = gateway_connector.get_gateway_information().await?;
+        let client_settings = gateway_connector.get_client_settings(&session.session_id).await?;
+
+        let subnets = util::ranges_to_subnets(&client_settings.updated_policies.range.settings).collect::<Vec<_>>();
+
+        let gateway_address =
+            util::server_name_to_ipv4(&params.server_name, gateway_information.connectivity_info.natt_port)?;
+
+        debug!(
+            "Resolved gateway address: {}, acquired internal address: {}",
+            gateway_address, client_settings.gw_internal_ip
+        );
+
+        let ready = Arc::new(AtomicBool::new(false));
+
+        let device_name = params
+            .if_name
+            .as_deref()
+            .unwrap_or(TunnelParams::DEFAULT_IPSEC_IF_NAME)
+            .to_owned();
+
+        let keepalive_runner = KeepaliveRunner::new(
+            gateway_information.connectivity_info.server_ip,
+            device_name.clone(),
+            if params.no_keepalive || !Platform::get().get_features().await.ipsec_keepalive {
+                Arc::new(AtomicBool::new(false))
+            } else {
+                ready.clone()
+            },
+        );
+
+        let scv_runner = ScvRunner::new(
+            gateway_information.connectivity_info.server_ip,
+            device_name.clone(),
+            ready.clone(),
+        );
+
+        let natt_socket = if let Ok(socket) = UdpSocket::bind("0.0.0.0:4500").await {
+            socket
+        } else {
+            warn!("UDP bind to port 4500 failed, falling back to ephemeral port");
+            UdpSocket::bind("0.0.0.0:0").await?
+        };
+
+        natt_socket.set_encapsulation(UdpEncapType::EspInUdp)?;
+
+        let device_config = DeviceConfig {
+            name: device_name.clone(),
+            mtu: params.mtu,
+            address: ipsec_session.ipv4net_address(),
+            allow_forwarding: params.allow_forwarding,
+        };
+
+        let my_address = Platform::get().new_network_interface().get_default_ipv4().await?;
+
+        let configurator = Platform::get().new_ipsec_configurator(
+            device_config,
+            ipsec_session.clone(),
+            my_address,
+            natt_socket.local_addr()?.port(),
+            gateway_address,
+            gateway_information.connectivity_info.natt_port,
+        );
+
+        configurator.configure().await?;
+
+        Ok(Self {
+            xfrm_configurator: Box::new(configurator),
+            keepalive_runner,
+            scv_runner,
+            natt_socket: Arc::new(natt_socket),
+            ready,
+            params,
+            session,
+            device_name,
+            gateway_address,
+            subnets,
+        })
+    }
+
+    async fn setup_dns(&self, resolver_config: &ResolverConfig, cleanup: bool) -> anyhow::Result<()> {
+        debug!("Configuring resolver: {:?}", resolver_config);
+
+        let resolver = Platform::get().new_resolver_configurator(&self.device_name)?;
+
+        if cleanup {
+            resolver.cleanup(resolver_config).await?;
+        } else {
+            resolver.configure(resolver_config).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn setup_routing(&self, session: &IPsecSession) -> anyhow::Result<()> {
+        let configurator = Platform::get()
+            .new_routing_configurator(&self.device_name, TunnelType::IPsec)
+            .await?;
+
+        let config = if self.params.no_routing {
+            RoutingConfig::Split {
+                destination: self.gateway_address,
+                routes: self.params.add_routes.clone(),
+            }
+        } else if self.params.default_route {
+            RoutingConfig::Full {
+                destination: self.gateway_address,
+                disable_ipv6: self.params.disable_ipv6,
+            }
+        } else {
+            let mut routes = Vec::with_capacity(self.subnets.len() + self.params.add_routes.len());
+            routes.extend(&self.params.add_routes);
+            routes.extend(&self.subnets);
+            routes.retain(|r| !self.params.ignore_routes.contains(r));
+            let network = Ipv4Net::with_netmask(session.address, session.netmask)?;
+            if network.prefix_len() < 32 {
+                routes.push(network.trunc());
+            }
+            RoutingConfig::Split {
+                destination: self.gateway_address,
+                routes,
+            }
+        };
+
+        configurator.configure(&config).await?;
+
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) {
+        if !self.params.no_dns
+            && let Some(session) = self.session.ipsec_session()
+        {
+            let config = ResolverConfig::builder(self.params.clone(), Platform::get().get_features().await)
+                .search_domains(&session.domains)
+                .dns_servers(session.dns.iter().cloned())
+                .build();
+
+            let _ = self.setup_dns(&config, true).await;
+        }
+
+        if let Ok(configurator) = Platform::get()
+            .new_routing_configurator(&self.device_name, TunnelType::IPsec)
+            .await
+        {
+            let _ = configurator
+                .configure(&RoutingConfig::Cleanup {
+                    destination: self.gateway_address,
+                    enable_ipv6: self.params.disable_ipv6,
+                })
+                .await
+                .inspect_err(|e| warn!("{e}"));
+        }
+
+        self.xfrm_configurator.cleanup().await;
+    }
+}
+
+#[async_trait::async_trait]
+impl VpnTunnel for NativeIPsecTunnel {
+    async fn run(
+        &mut self,
+        mut command_receiver: mpsc::Receiver<TunnelCommand>,
+        event_sender: mpsc::Sender<TunnelEvent>,
+    ) -> anyhow::Result<()> {
+        debug!("Running IPsec tunnel");
+
+        let natt_stopper = start_natt_listener(self.natt_socket.clone(), event_sender.clone()).await?;
+
+        let session = self
+            .session
+            .ipsec_session()
+            .with_context(|| tr!("error-no-ipsec-session"))?;
+
+        let resolver_config = ResolverConfig::builder(self.params.clone(), Platform::get().get_features().await)
+            .search_domains(&session.domains)
+            .dns_servers(session.dns.iter().cloned())
+            .build();
+
+        let routing_fut = self.setup_routing(session);
+        let dns_fut = async {
+            if self.params.no_dns {
+                Ok(())
+            } else {
+                self.setup_dns(&resolver_config, false).await
+            }
+        };
+        tokio::try_join!(routing_fut, dns_fut)?;
+
+        let ip_address = Ipv4Net::with_netmask(session.address, session.netmask)?;
+
+        let info = ConnectionInfo {
+            since: Some(Local::now()),
+            server_name: self.params.server_name.clone(),
+            username: self.session.username.clone().unwrap_or_default(),
+            login_type: self.params.login_type.clone(),
+            tunnel_type: self.params.tunnel_type,
+            transport_type: session.transport_type,
+            ip_address,
+            dns_servers: resolver_config.dns_servers,
+            search_domains: resolver_config.search_domains,
+            interface_name: self.device_name.clone(),
+            dns_configured: !self.params.no_dns,
+            routing_configured: !self.params.no_routing,
+            default_route: self.params.default_route,
+            profile_id: self.params.profile_id,
+            profile_name: self.params.profile_name.clone(),
+            live: Default::default(),
+            ike_state: Some(session.to_ike_state()),
+        };
+        let _ = event_sender.send(TunnelEvent::Connected(Box::new(info))).await;
+
+        self.keepalive_runner.set_event_sender(event_sender.clone());
+
+        let sender = event_sender.clone();
+
+        tokio::task::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            while sender.send(TunnelEvent::RekeyCheck).await.is_ok() {
+                interval.tick().await;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+
+        let fut = async {
+            while let Some(cmd) = command_receiver.recv().await {
+                match cmd {
+                    TunnelCommand::Terminate(_signout) => {
+                        break;
+                    }
+                    TunnelCommand::ReKey(session) => {
+                        debug!(
+                            "Rekey command received, new lifetime: {}, configuring xfrm",
+                            session.lifetime.as_secs()
+                        );
+                        self.ready.store(false, Ordering::SeqCst);
+                        let _ = self.xfrm_configurator.rekey(&session).await;
+                        self.ready.store(true, Ordering::SeqCst);
+                        let _ = event_sender.send(TunnelEvent::Rekeyed(session)).await;
+                    }
+                }
+            }
+        };
+
+        self.ready.store(true, Ordering::SeqCst);
+
+        let result = tokio::select! {
+            () = fut => {
+                debug!("Terminating IPsec tunnel due to stop command");
+                Ok(())
+            }
+
+            err = self.keepalive_runner.run() => {
+                debug!("Terminating IPsec tunnel due to keepalive failure");
+                err
+            }
+            err = self.scv_runner.run() => {
+                warn!("SCV runner exited unexpectedly");
+                err
+            }
+        };
+
+        let _ = natt_stopper.send(());
+        let _ = event_sender.send(TunnelEvent::Disconnected).await;
+
+        result
+    }
+}
+
+impl Drop for NativeIPsecTunnel {
+    fn drop(&mut self) {
+        debug!("Cleaning up IPsec tunnel");
+        std::thread::scope(|s| {
+            s.spawn(|| util::block_on(self.cleanup()));
+        });
+    }
+}

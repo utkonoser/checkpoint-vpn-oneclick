@@ -1,0 +1,320 @@
+# Dialog and buttons
+dialog-title = Настройки VPN
+button-ok = OK
+button-apply = Применить
+button-cancel = Отмена
+button-close = Закрыть
+
+# Labels
+label-server-address = Адрес VPN-сервера
+label-auth-method = Метод аутентификации
+label-tunnel-type = Тип туннеля
+label-cert-auth-type = Тип сертификата
+label-icon-theme = Тема иконок
+label-color-theme = Цветовая тема
+label-username = Имя пользователя
+label-username-required = Для аутентификации требуется имя пользователя
+label-password = Пароль
+label-no-dns = Не изменять настройки DNS-серверов
+label-no-split-dns = Отключить раздельный DNS для systemd-resolved
+label-dns-servers = Дополнительные DNS-серверы
+label-ignored-dns-servers = Игнорируемые DNS-серверы
+label-search-domains = Дополнительные домены поиска
+label-ignored-domains = Игнорируемые домены поиска
+label-routing-domains = Использовать полученные домены поиска как маршрутизируемые
+label-ca-cert = Корневые сертификаты CA сервера
+label-no-cert-check = Отключить все проверки TLS-сертификатов (НЕБЕЗОПАСНО!)
+label-password-factor = Индекс фактора пароля, 1..N
+label-keychain = Хранить пароль пользователя в хранилище ключей
+label-ike-lifetime = Время жизни IPsec IKE SA, секунды
+label-ike-persist = Сохранять сессию IPsec IKE и переподключаться автоматически
+label-ike-version = Версия протокола IKE
+label-no-keepalive = Отключить пакеты keepalive IPsec
+label-port-knock = Включить NAT-T port knocking
+label-no-routing = Игнорировать все полученные маршруты
+label-default-routing = Установить маршрут по умолчанию через туннель
+label-add-routes = Дополнительные статические маршруты
+label-ignored-routes = Маршруты для игнорирования
+label-client-cert = Файл клиентского сертификата
+label-driver-file = Файл драйвера PKCS11
+label-cert-password = Пароль PFX
+label-pkcs11-pin = PIN-код PKCS11
+label-cert-id = Шестнадцатеричный ID сертификата PKCS11
+label-cert-name = Общее имя сертификата
+label-language = Язык
+label-system-default = Системный по умолчанию
+label-username-password = Имя пользователя и пароль
+label-auto-connect = Автоматически подключаться при запуске
+label-auto-disconnect = Автоматически отключаться при выходе
+label-ip-lease-time = Пользовательское время аренды IP, секунды
+label-disable-ipv6 = Отключать IPv6, когда включён маршрут по умолчанию
+label-mtu = MTU
+label-profile-name = Имя профиля
+label-confirmation = Пожалуйста, подтвердите
+label-mobile-access = Мобильный доступ
+label-machine-cert-auth = Аутентификация машинным сертификатом
+label-supported-files = Поддерживаемые типы файлов
+label-all-files = Все файлы
+label-cancel = Отмена
+label-open = Открыть
+label-select-file = Выбрать файл
+label-ca-cert-files = Сертификаты X.509
+label-allow-forwarding = Разрешить пересылку пакетов для интерфейса туннеля
+label-tls-version-max = Максимальная версия TLS
+label-pin-required = PIN-код требуется для аутентификации устройства HSM
+label-pin = PIN-код
+label-notification-level = Уровень уведомлений
+
+# Tabs and expanders
+tab-general = Основные
+tab-advanced = Дополнительно
+expand-dns = DNS
+expand-routing = Маршрутизация
+expand-certificates = Сертификаты
+expand-ipsec = IPsec
+expand-misc = Прочие настройки
+expand-ui = Настройки интерфейса
+
+# Error messages
+error-no-server-name = Не указан адрес сервера
+error-no-auth = Не выбран метод аутентификации
+error-file-not-exist = Файл не существует: {$path}
+error-invalid-cert-id = ID сертификата не в шестнадцатеричном формате: {$id}
+error-ca-root-not-exist = Путь к корневому сертификату CA не существует: {$path}
+error-validation = Ошибка проверки
+error-profile-not-found = Профиль не найден: {$profile}
+error-user-input-canceled = Ввод пользователя отменён
+error-connection-cancelled = Соединение отменено
+error-unknown-event = Неизвестное событие: {$event}
+error-no-service-connection = Нет соединения со службой
+error-empty-input = Ввод не может быть пустым
+error-invalid-response = Недопустимый ответ!
+error-cannot-acquire-access-cookie = Не удалось получить cookie доступа!
+error-invalid-object = Недопустимый объект
+error-no-connector = Нет коннектора туннеля
+error-tunnel-disconnected = Туннель отключен, последнее сообщение: {$message}
+error-unexpected-reply = Неожиданный ответ
+error-auth-failed = Ошибка аутентификации
+error-no-login-type = Отсутствует обязательный параметр: login-type
+error-connection-timeout = Таймаут соединения
+error-cannot-send-request = Невозможно отправить запрос в службу
+error-cannot-read-reply = Невозможно прочитать ответ от службы
+error-no-ipv4 = Нет IPv4 адреса для {$server}
+error-sysctl-not-converged = Sysctl не сошёлся: {$entry}
+error-not-challenge-state = Не состояние запроса
+error-no-challenge = Нет запроса в данных
+error-endless-challenges = Бесконечный цикл запросов имени пользователя
+error-no-pkcs12 = Не указан путь к PKCS12 и пароль
+error-no-pkcs8 = Не указан путь к PKCS8 PEM
+error-no-pkcs11 = Не указан PIN-код PKCS11
+error-no-ipsec-session = Нет сессии IPsec
+error-request-failed-error-code = Ошибка запроса, код ошибки: {$error_code}
+error-no-root-privileges = Эта программа должна быть запущена с правами root!
+error-missing-required-parameters = Отсутствуют обязательные параметры: имя сервера и/или тип входа!
+error-missing-server-name = Отсутствует обязательный параметр: имя сервера!
+error-no-connector-for-challenge-code = Нет коннектора для отправки кода запроса!
+error-probing-failed = Ошибка проверки, сервер недоступен через порт NATT!
+error-invalid-sexpr = Недопустимый sexpr: {$value}
+error-invalid-value = Недопустимое значение
+error-udp-request-failed = Ошибка отправки UDP-запроса
+error-no-tty = Нет подключенного TTY для получения ввода пользователя
+error-invalid-auth-response = Недопустимый ответ аутентификации
+error-invalid-client-settings = Недопустимый ответ настроек клиента
+error-invalid-cert-response = Недопустимый ответ сертификата
+error-certificate-enrollment-failed = Регистрация сертификата не удалась, код ошибки: {$code}
+error-missing-cert-path = Отсутствует путь к файлу PKCS12!
+error-missing-cert-password = Отсутствует пароль PKCS12!
+error-missing-reg-key = Отсутствует ключ регистрации!
+error-invalid-otp-reply = Недопустимый ответ OTP
+error-udp-encap-failed = Не удалось установить опцию сокета UDP_ENCAP, код ошибки: {$code}
+error-so-no-check-failed = Не удалось установить опцию сокета SO_NO_CHECK, код ошибки: {$code}
+error-keepalive-failed = Ошибка keepalive
+error-receive-failed = Ошибка получения
+error-unknown-color-scheme = Неизвестное значение цветовой схемы
+error-cannot-determine-ip = Не удалось определить IP по умолчанию
+error-device-not-found = Устройство {$device} не найдено
+error-invalid-command = Недопустимая команда: {$command}
+error-otp-browser-failed = Не удалось получить OTP из браузера
+error-invalid-operation-mode = Недопустимый режим работы
+error-invalid-tunnel-type = Недопустимый тип туннеля
+error-invalid-cert-type = Недопустимый тип сертификата
+error-invalid-icon-theme = Недопустимая тема иконок
+error-no-natt-reply = Нет ответа NAT-T
+error-not-implemented = Не реализовано
+error-unknown-packet-type = Неизвестный тип пакета
+error-no-sender = Нет отправителя
+error-empty-ccc-session = Пустая сессия CCC
+error-no-om-session = В ответе нет сессии, возможно, на VPN-сервере закончились лицензии OM
+error-identity-timeout = Таймаут при ожидании ответа идентификации, правильный ли тип входа?
+error-invalid-transport-type = Неверный тип транспорта
+error-invalid-ike-version = Неверная версия IKE
+error-invalid-tls-version-max = Неверная максимальная версия TLS
+error-certificate-verify-failed = Проверка TLS-сертификата не удалась. Сертификат сервера недействителен, истёк или не является доверенным.
+error-invalid-gateway-info = Неверный ответ с информацией о шлюзе
+error-invalid-notification-level = Неверный уровень уведомлений
+error-unsupported-login-type = Неподдерживаемый тип входа
+
+# Placeholder texts
+placeholder-domains = Домены через запятую
+placeholder-ip-addresses = IP-адреса через запятую
+placeholder-routes = Маршруты через запятую в формате x.x.x.x/x
+placeholder-certs = PEM или DER файлы через запятую
+
+# Tunnel types
+tunnel-type-ipsec = IPsec
+tunnel-type-ssl = SSL (устаревший)
+
+# Certificate types
+cert-type-none = Нет
+cert-type-pfx = Хранилище ключей PFX (PKCS12)
+cert-type-pem = Файл PEM с сертификатом и закрытым ключом
+cert-type-hw = HSM-устройство
+cert-type-system = Системное хранилище сертификатов
+
+# Transport types
+transport-type-autodetect = Автоопределение
+transport-type-kernel = UDP XFRM
+transport-type-tcpt = TCPT TUN
+transport-type-udp = UDP TUN
+
+# IKE versions
+ike-version-autodetect = Автоопределение
+ike-version-1 = IKEv1
+ike-version-2 = IKEv2
+
+# Notification levels
+notification-level-off = Выключено
+notification-level-minimal = Минимальный
+notification-level-standard = Стандартный
+notification-level-verbose = Подробный
+
+# Icon themes
+theme-autodetect = Автоопределение
+theme-dark = Тёмная
+theme-light = Светлая
+
+# Application
+app-title = VPN-клиент SNX-RS
+app-connection-error = Ошибка соединения
+app-connection-success = Соединение установлено
+
+# About dialog
+about-version = Версия
+about-authors = Авторы
+about-license = Лицензия
+
+# Authentication
+auth-dialog-title = Фактор аутентификации VPN
+auth-dialog-message = Пожалуйста, введите ваш фактор аутентификации:
+
+# Status dialog
+status-dialog-title = Информация о соединении
+status-button-copy = Копировать
+status-show-stats = Показывать статистику в реальном времени
+status-button-settings = Настройки
+status-button-connect = Подключить
+status-button-disconnect = Отключить
+
+# Tray menu
+tray-menu-connect = Подключить
+tray-menu-disconnect = Отключить
+tray-menu-status = Статус соединения...
+tray-menu-settings = Настройки...
+tray-menu-about = О программе...
+tray-menu-exit = Выход
+
+# Connection info
+info-connected-since = Подключено с
+info-server-name = Имя сервера
+info-user-name = Имя пользователя
+info-login-type = Тип входа
+info-tunnel-type = Тип туннеля
+info-transport-type = Тип транспорта IPsec
+info-ip-address = IP-адрес
+info-dns-servers = DNS-серверы
+info-search-domains = Домены поиска
+info-interface = Интерфейс
+info-dns-configured = DNS настроен
+info-routing-configured = Маршрутизация настроена
+info-default-route = Маршрут по умолчанию
+info-connection-profile = Профиль подключения
+info-rtt = RTT
+info-bytes-received = Принято байт
+info-bytes-sent = Отправлено байт
+info-rate-received = Скорость приёма
+info-rate-sent = Скорость передачи
+info-packets-received = Принято пакетов
+info-packets-sent = Отправлено пакетов
+info-ike-initiator-spi = SPI инициатора IKE SA
+info-ike-responder-spi = SPI ответчика IKE SA
+info-ike-lifetime = Время жизни IKE SA
+info-ike-timestamp = Метка времени IKE SA
+info-ike-expiration = Истечение IKE SA
+info-esp-spi-in = Входящий SPI ESP
+info-esp-spi-out = Исходящий SPI ESP
+info-esp-encryption-in = Входящее шифрование ESP
+info-esp-authentication-in = Входящая аутентификация ESP
+info-esp-encryption-out = Исходящее шифрование ESP
+info-esp-authentication-out = Исходящая аутентификация ESP
+info-ipsec-sa = IPsec SA
+
+# CLI Messages
+cli-identity-provider-auth = Для аутентификации через провайдера идентификации откройте следующий URL в браузере:
+cli-tunnel-connected = Туннель подключен, нажмите Ctrl-C для выхода.
+cli-tunnel-disconnected = Туннель отключен
+cli-another-instance-running = Другая копия snx-rs уже запущена
+cli-app-terminated = Приложение завершено по сигналу
+cli-mobile-access-auth = Для аутентификации мобильного доступа войдите на { $url }, затем найдите пароль пользователя в шестнадцатеричном виде в исходном коде HTML страницы и введите его здесь.
+cli-certificate-enrolled = Сертификат успешно зарегистрирован.
+cli-no-ike-state = Нет состояния IKE SA!
+cli-rekey-state-pending = Состояние IKE SA ещё не изменилось, показано предыдущее состояние
+
+# Connection Messages
+connection-connected-to = Подключено к {$server}
+connection-connecting-to = Подключение к {$server}
+connection-disconnected-from = Отключено от {$server}
+connection-disconnecting-ike-expiry = Скоро произойдёт отключение из-за истечения IKE SA
+connection-rekeyed = Ключи туннеля IPsec успешно обновлены
+
+# Languages
+language-cs-CZ = Чешский
+language-da-DK = Датский
+language-de-DE = Немецкий
+language-en-US = Английский
+language-es-ES = Испанский
+language-fi-FI = Финский
+language-fr-FR = Французский
+language-hr-HR = Хорватский
+language-it-IT = Итальянский
+language-nl-NL = Голландский
+language-no-NO = Норвежский
+language-pl-PL = Польский
+language-pt-PT = Португальский
+language-pt-BR = Бразильский португальский
+language-ru-RU = Русский
+language-sk-SK = Словацкий
+language-sv-SE = Шведский
+
+# Connection status messages
+connection-status-disconnected = Отключено
+connection-status-connected = Подключено
+connection-status-connecting = Выполняется подключение
+connection-status-connected-since = Подключено с: {$since}
+connection-status-mfa-pending = Ожидание MFA: {$mfa_type}
+
+# Login options
+login-options-server-address = Адрес сервера
+login-options-server-ip = IP сервера
+login-options-client-enabled = Клиент включен
+login-options-supported-protocols = Поддерживаемые протоколы
+login-options-preferred-protocol = Предпочтительный протокол
+login-options-tcpt-port = Порт TCPT
+login-options-natt-port = Порт NATT
+login-options-internal-ca-fingerprint = Отпечаток внутреннего CA
+
+# Connection profiles
+profile-delete-prompt = Вы уверены, что хотите удалить выбранный профиль?
+profile-default-name = По умолчанию
+profile-new-title = Новый профиль подключения
+profile-rename-title = Переименовать профиль подключения
+profiles-header = Профили подключения

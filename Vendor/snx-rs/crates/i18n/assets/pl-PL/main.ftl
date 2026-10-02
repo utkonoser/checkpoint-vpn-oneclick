@@ -1,0 +1,320 @@
+# Dialog and buttons
+dialog-title = Ustawienia VPN
+button-ok = OK
+button-apply = Zastosuj
+button-cancel = Anuluj
+button-close = Zamknij
+
+# Labels
+label-server-address = Adres serwera VPN
+label-auth-method = Metoda uwierzytelniania
+label-tunnel-type = Typ tunelu
+label-cert-auth-type = Typ certyfikatu
+label-icon-theme = Motyw ikon
+label-color-theme = Motyw kolorów
+label-username = Nazwa użytkownika
+label-username-required = Nazwa użytkownika jest wymagana do uwierzytelnienia
+label-password = Hasło
+label-no-dns = Nie zmieniaj konfiguracji resolvera DNS
+label-no-split-dns = Wyłącz podzielony DNS dla systemd-resolved
+label-dns-servers = Dodatkowe serwery DNS
+label-ignored-dns-servers = Ignorowane serwery DNS
+label-search-domains = Dodatkowe domeny wyszukiwania
+label-ignored-domains = Ignorowane domeny wyszukiwania
+label-routing-domains = Traktuj otrzymane domeny wyszukiwania jako domeny routingu
+label-ca-cert = Certyfikaty główne CA serwera
+label-no-cert-check = Wyłącz wszystkie kontrole certyfikatów TLS
+label-password-factor = Indeks współczynnika hasła, 1..N
+label-keychain = Przechowuj hasło użytkownika w schowku kluczy
+label-ike-lifetime = Czas życia IPsec IKE SA, sekundy
+label-ike-persist = Zapisz sesję IPsec IKE
+label-ike-version = Wersja protokołu IKE
+label-no-keepalive = Wyłącz pakiety keepalive IPsec
+label-port-knock = Włącz port knocking NAT-T
+label-no-routing = Ignoruj wszystkie nabyte trasy
+label-default-routing = Ustaw trasę domyślną przez tunel
+label-add-routes = Dodatkowe trasy statyczne
+label-ignored-routes = Trasy do ignorowania
+label-client-cert = Plik certyfikatu klienta
+label-driver-file = Plik sterownika PKCS11
+label-cert-password = Hasło PFX
+label-pkcs11-pin = PIN PKCS11
+label-cert-id = Identyfikator szesnastkowy certyfikatu PKCS11
+label-cert-name = Nazwa pospolita certyfikatu
+label-language = Język
+label-system-default = Domyślny systemowy
+label-username-password = Nazwa użytkownika i hasło
+label-auto-connect = Automatycznie łącz przy starcie
+label-auto-disconnect = Automatycznie rozłączaj przy zamknięciu
+label-ip-lease-time = Niestandardowy czas dzierżawy IP, sekundy
+label-disable-ipv6 = Trasa domyślna wyłącza IPv6
+label-mtu = MTU
+label-profile-name = Nazwa profilu
+label-confirmation = Proszę potwierdzić
+label-mobile-access = Dostęp mobilny
+label-machine-cert-auth = Uwierzytelnianie certyfikatem komputera
+label-supported-files = Obsługiwane typy plików
+label-all-files = Wszystkie pliki
+label-cancel = Anuluj
+label-open = Otwórz
+label-select-file = Wybierz plik
+label-ca-cert-files = Certyfikaty X.509
+label-allow-forwarding = Zezwól na przekazywanie pakietów
+label-tls-version-max = Maksymalna wersja TLS
+label-pin-required = Kod PIN jest wymagany do uwierzytelniania urządzenia HSM
+label-pin = PIN
+label-notification-level = Poziom powiadomień
+
+# Tabs and expanders
+tab-general = Ogólne
+tab-advanced = Zaawansowane
+expand-dns = DNS
+expand-routing = Routing
+expand-certificates = Certyfikaty
+expand-ipsec = IPsec
+expand-misc = Ustawienia dodatkowe
+expand-ui = Interfejs użytkownika
+
+# Error messages
+error-no-server-name = Nie podano adresu serwera
+error-no-auth = Nie wybrano metody uwierzytelniania
+error-file-not-exist = Plik nie istnieje: {$path}
+error-invalid-cert-id = Identyfikator certyfikatu nie w formacie szesnastkowym: {$id}
+error-ca-root-not-exist = Ścieżka główna CA nie istnieje: {$path}
+error-validation = Błąd walidacji
+error-profile-not-found = Nie znaleziono profilu: {$profile}
+error-user-input-canceled = Wprowadzanie danych przez użytkownika anulowane
+error-connection-cancelled = Połączenie anulowane
+error-unknown-event = Nieznane zdarzenie: {$event}
+error-no-service-connection = Brak połączenia z usługą
+error-empty-input = Dane wejściowe nie mogą być puste
+error-invalid-object = Nieprawidłowy obiekt
+error-no-connector = Brak łącznika tunelu
+error-tunnel-disconnected = Tunel rozłączony, ostatnia wiadomość: {$message}
+error-unexpected-reply = Nieoczekiwana odpowiedź
+error-auth-failed = Uwierzytelnianie nie powiodło się
+error-no-login-type = Brak wymaganego parametru: login-type
+error-connection-timeout = Przekroczenie czasu połączenia
+error-invalid-response = Nieprawidłowa odpowiedź
+error-cannot-acquire-access-cookie = Nie można uzyskać ciasteczka dostępu!
+error-cannot-send-request = Nie można wysłać żądania do usługi
+error-cannot-read-reply = Nie można odczytać odpowiedzi z usługi
+error-no-ipv4 = Brak adresu IPv4 dla {$server}
+error-sysctl-not-converged = Sysctl nie zbiegł się: {$entry}
+error-not-challenge-state = Nie jest stanem wyzwania
+error-no-challenge = Brak wyzwania w danych
+error-endless-challenges = Nieskończona pętla wyzwań nazwy użytkownika
+error-no-pkcs12 = Nie podano ścieżki PKCS12 i hasła
+error-no-pkcs8 = Nie podano ścieżki PKCS8 PEM
+error-no-pkcs11 = Nie podano kodu PIN PKCS11
+error-no-ipsec-session = Brak sesji IPsec
+error-request-failed-error-code = Żądanie nie powiodło się, kod błędu: {$error_code}
+error-no-root-privileges = Ten program musi być uruchomiony jako użytkownik root!
+error-missing-required-parameters = Brak wymaganych parametrów: nazwa serwera i/lub typ dostępu!
+error-missing-server-name = Brak wymaganego parametru: nazwa serwera!
+error-no-connector-for-challenge-code = Brak łącznika do wysłania kodu wyzwania!
+error-probing-failed = Sondowanie nie powiodło się, serwer nie jest dostępny przez port NATT!
+error-invalid-sexpr = Nieprawidłowy sexpr: {$value}
+error-invalid-value = Nieprawidłowa wartość
+error-udp-request-failed = Błąd podczas wysyłania żądania UDP
+error-no-tty = Brak podłączonego TTY do wprowadzania danych przez użytkownika
+error-invalid-auth-response = Nieprawidłowa odpowiedź uwierzytelniania
+error-invalid-client-settings = Nieprawidłowe ustawienia klienta
+error-invalid-cert-response = Nieprawidłowa odpowiedź certyfikatu
+error-certificate-enrollment-failed = Rejestracja certyfikatu nie powiodła się, kod błędu: {$code}
+error-missing-cert-path = Brak ścieżki do pliku PKCS12!
+error-missing-cert-password = Brak hasła PKCS12!
+error-missing-reg-key = Brak klucza rejestracyjnego!
+error-invalid-otp-reply = Nieprawidłowa odpowiedź OTP
+error-udp-encap-failed = Nie można ustawić opcji gniazda UDP_ENCAP, kod błędu: {$code}
+error-so-no-check-failed = Nie można ustawić opcji gniazda SO_NO_CHECK, kod błędu: {$code}
+error-keepalive-failed = Keepalive nie powiódł się
+error-receive-failed = Odbieranie nie powiodło się
+error-unknown-color-scheme = Nieznana wartość schematu kolorów
+error-cannot-determine-ip = Nie można określić domyślnego IP
+error-device-not-found = Urządzenie {$device} nie zostało znalezione
+error-invalid-command = Nieprawidłowe polecenie: {$command}
+error-otp-browser-failed = Nie można uzyskać OTP z przeglądarki
+error-invalid-operation-mode = Nieprawidłowy tryb działania
+error-invalid-tunnel-type = Nieprawidłowy typ tunelu
+error-invalid-cert-type = Nieprawidłowy typ certyfikatu
+error-invalid-icon-theme = Nieprawidłowy motyw ikon
+error-no-natt-reply = Brak odpowiedzi NATT
+error-not-implemented = Nie zaimplementowano
+error-unknown-packet-type = Nieznany typ pakietu
+error-no-sender = Brak nadawcy
+error-empty-ccc-session = Pusta sesja CCC
+error-no-om-session = Brak sesji w odpowiedzi, na serwerze VPN mogły skończyć się licencje OM
+error-identity-timeout = Przekroczenie czasu oczekiwania na odpowiedź tożsamości, czy typ dostępu jest poprawny?
+error-invalid-transport-type = Nieprawidłowy typ transportu
+error-invalid-ike-version = Nieprawidłowa wersja IKE
+error-invalid-tls-version-max = Nieprawidłowa maksymalna wersja TLS
+error-certificate-verify-failed = Weryfikacja certyfikatu TLS nie powiodła się. Certyfikat serwera jest nieprawidłowy, wygasł lub nie jest zaufany.
+error-invalid-gateway-info = Nieprawidłowa odpowiedź z informacjami o bramie
+error-invalid-notification-level = Nieprawidłowy poziom powiadomień
+error-unsupported-login-type = Nieobsługiwany typ logowania
+
+# Placeholder texts
+placeholder-domains = Domeny oddzielone przecinkami
+placeholder-ip-addresses = Adresy IP oddzielone przecinkami
+placeholder-routes = Trasy oddzielone przecinkami w formacie x.x.x.x/x
+placeholder-certs = Pliki PEM lub DER oddzielone przecinkami
+
+# Tunnel types
+tunnel-type-ipsec = IPsec
+tunnel-type-ssl = SSL (przestarzały)
+
+# Certificate types
+cert-type-none = Brak
+cert-type-pfx = Magazyn kluczy PFX (PKCS12)
+cert-type-pem = Plik PEM z certyfikatem i kluczem prywatnym
+cert-type-hw = Urządzenie HSM
+cert-type-system = Systemowy magazyn certyfikatów
+
+# Transport types
+transport-type-autodetect = Automatyczne wykrywanie
+transport-type-kernel = UDP XFRM
+transport-type-tcpt = TCPT TUN
+transport-type-udp = UDP TUN
+
+# IKE versions
+ike-version-autodetect = Automatyczne wykrywanie
+ike-version-1 = IKEv1
+ike-version-2 = IKEv2
+
+# Notification levels
+notification-level-off = Wyłączone
+notification-level-minimal = Minimalny
+notification-level-standard = Standardowy
+notification-level-verbose = Szczegółowy
+
+# Icon themes
+theme-autodetect = Automatyczne wykrywanie
+theme-dark = Ciemny
+theme-light = Jasny
+
+# Connection info
+info-connected-since = Połączono od
+info-server-name = Nazwa serwera
+info-user-name = Nazwa użytkownika
+info-login-type = Typ logowania
+info-tunnel-type = Typ tunelu
+info-transport-type = Typ transportu IPsec
+info-ip-address = Adres IP
+info-dns-servers = Serwery DNS
+info-search-domains = Domeny wyszukiwania
+info-interface = Interfejs
+info-dns-configured = DNS skonfigurowany
+info-routing-configured = Routing skonfigurowany
+info-default-route = Trasa domyślna
+info-connection-profile = Profil połączenia
+info-rtt = RTT
+info-bytes-received = Odebrane bajty
+info-bytes-sent = Wysłane bajty
+info-rate-received = Prędkość odbioru
+info-rate-sent = Prędkość wysyłania
+info-packets-received = Odebrane pakiety
+info-packets-sent = Wysłane pakiety
+info-ike-initiator-spi = SPI inicjatora IKE SA
+info-ike-responder-spi = SPI odpowiadającego IKE SA
+info-ike-lifetime = Czas życia IKE SA
+info-ike-timestamp = Znacznik czasu IKE SA
+info-ike-expiration = Wygaśnięcie IKE SA
+info-esp-spi-in = Przychodzące SPI ESP
+info-esp-spi-out = Wychodzące SPI ESP
+info-esp-encryption-in = Przychodzące szyfrowanie ESP
+info-esp-authentication-in = Przychodzące uwierzytelnianie ESP
+info-esp-encryption-out = Wychodzące szyfrowanie ESP
+info-esp-authentication-out = Wychodzące uwierzytelnianie ESP
+info-ipsec-sa = IPsec SA
+
+# Application
+app-title = Klient VPN SNX-RS
+app-connection-error = Błąd połączenia
+app-connection-success = Połączenie udane
+
+# About dialog
+about-version = Wersja
+about-authors = Autorzy
+about-license = Licencja
+
+# Authentication
+auth-dialog-title = Czynnik uwierzytelniania VPN
+auth-dialog-message = Wprowadź swój czynnik uwierzytelniania:
+
+# Status dialog
+status-dialog-title = Informacje o połączeniu
+status-button-copy = Kopiuj
+status-show-stats = Pokaż statystyki na żywo
+status-button-settings = Ustawienia
+status-button-connect = Połącz
+status-button-disconnect = Rozłącz
+
+# Tray menu
+tray-menu-connect = Połącz
+tray-menu-disconnect = Rozłącz
+tray-menu-status = Status połączenia...
+tray-menu-settings = Ustawienia...
+tray-menu-about = O programie...
+tray-menu-exit = Zakończ
+
+# CLI Messages
+cli-identity-provider-auth = Aby uwierzytelnić się przez dostawcę tożsamości, otwórz następujący adres URL w przeglądarce:
+cli-tunnel-connected = Tunel połączony, naciśnij Ctrl+C aby zakończyć.
+cli-tunnel-disconnected = Tunel rozłączony
+cli-another-instance-running = Inna instancja snx-rs jest już uruchomiona
+cli-app-terminated = Aplikacja zakończona przez sygnał
+cli-mobile-access-auth = Aby uwierzytelnić dostęp mobilny, zaloguj się na { $url }, następnie znajdź hasło użytkownika w formie hex w źródle HTML strony i wprowadź je tutaj.
+cli-certificate-enrolled = Certyfikat został pomyślnie zarejestrowany.
+cli-no-ike-state = Brak stanu IKE SA!
+cli-rekey-state-pending = Stan IKE SA jeszcze się nie zmienił, wyświetlany jest poprzedni stan
+
+# Connection Messages
+connection-connected-to = Połączono z {$server}
+connection-connecting-to = Łączenie z {$server}
+connection-disconnected-from = Rozłączono z {$server}
+connection-disconnecting-ike-expiry = Wkrótce nastąpi rozłączenie z powodu wygaśnięcia IKE SA
+connection-rekeyed = Klucze tunelu IPsec zostały pomyślnie odnowione
+
+# Languages
+language-cs-CZ = Czeski
+language-da-DK = Duński
+language-de-DE = Niemiecki
+language-en-US = Angielski
+language-es-ES = Hiszpański
+language-fi-FI = Fiński
+language-fr-FR = Francuski
+language-hr-HR = Chorwacki
+language-it-IT = Włoski
+language-nl-NL = Holenderski
+language-no-NO = Norweski
+language-pl-PL = Polski
+language-pt-PT = Portugalski
+language-pt-BR = Brazylijski portugalski
+language-ru-RU = Rosyjski
+language-sk-SK = Słowacki
+language-sv-SE = Szwedzki
+
+# Connection status messages
+connection-status-disconnected = Rozłączono
+connection-status-connected = Połączono
+connection-status-connecting = Łączenie
+connection-status-connected-since = Połączono od: {$since}
+connection-status-mfa-pending = Oczekiwanie na MFA: {$mfa_type}
+
+# Login options
+login-options-server-address = Adres serwera
+login-options-server-ip = IP serwera
+login-options-client-enabled = Klient włączony
+login-options-supported-protocols = Obsługiwane protokoły
+login-options-preferred-protocol = Preferowany protokół
+login-options-tcpt-port = Port TCPT
+login-options-natt-port = Port NATT
+login-options-internal-ca-fingerprint = Odcisk wewnętrznego CA
+
+# Connection profiles
+profile-delete-prompt = Czy na pewno usunąć wybrany profil?
+profile-default-name = Domyślny
+profile-new-title = Nowy profil połączenia
+profile-rename-title = Zmień nazwę profilu połączenia
+profiles-header = Profile połączeń

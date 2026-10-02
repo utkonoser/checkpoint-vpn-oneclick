@@ -35,6 +35,11 @@ xcodebuild \
 
 test -d "$APP"
 
+if [[ ! -x "$ROOT/TunnelHelper/dist/CheckpointVPNTunnel" ]]; then
+  "$ROOT/Scripts/build-tunnel-helper.sh"
+fi
+"$ROOT/Scripts/bundle-tunnel-helper.sh" "$APP"
+
 codesign --force --sign - \
   --identifier "local.checkpointvpn.oneclick" \
   --entitlements "$ROOT/CheckpointVPNOneClick/CheckpointVPNOneClick.entitlements" \

@@ -141,7 +141,7 @@ final class AppModel: ObservableObject {
                     if restarted {
                         self.lastDaemonRestartAt = Date()
                         self.lastError = nil
-                        NSLog("snx-rs daemon restarted (\(reason))")
+                        NSLog("tunnel helper restarted (\(reason))")
                     }
                     self.snxStatus = .disconnected
                     self.refreshStatus()
@@ -161,12 +161,35 @@ final class AppModel: ObservableObject {
     }
 
     func restartDaemonManually() {
-        guard snxInstalled, !isBusy else { return }
+        guard !isBusy else { return }
         isBusy = true
         lastError = nil
         Task.detached {
             do {
                 try SnxClient.restartDaemon()
+                await MainActor.run {
+                    self.lastDaemonRestartAt = Date()
+                    self.snxStatus = .disconnected
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            }
+        }
+    }
+
+    func installHelperManually() {
+        guard !isBusy else { return }
+        isBusy = true
+        lastError = nil
+        Task.detached {
+            do {
+                try SnxClient.installHelper()
                 await MainActor.run {
                     self.lastDaemonRestartAt = Date()
                     self.snxStatus = .disconnected
@@ -350,10 +373,9 @@ final class AppModel: ObservableObject {
         let message = error.localizedDescription
         if message.localizedCaseInsensitiveContains("Internal IPSec certificate") {
             return """
-            \(message) — often after sleep with a half-dead snx-rs tunnel. \
+            \(message) — often after sleep with a half-dead tunnel helper. \
             Tap Disconnect, then Connect again. If it persists: \
-            sudo launchctl kickstart -k system/com.github.snx-rs \
-            (or Restart snx-rs daemon in Settings).
+            Repair tunnel helper in Settings (or sudo launchctl kickstart -k system/local.checkpointvpn.tunnel).
             """
         }
         if message.localizedCaseInsensitiveContains("503")

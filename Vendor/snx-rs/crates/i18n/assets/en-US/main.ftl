@@ -1,0 +1,318 @@
+# Dialog and buttons
+dialog-title = VPN settings
+button-ok = OK
+button-apply = Apply
+button-cancel = Cancel
+button-close = Close
+
+# Labels
+label-server-address = VPN server address
+label-auth-method = Authentication method
+label-tunnel-type = Tunnel type
+label-cert-auth-type = Certificate auth type
+label-icon-theme = Icon theme
+label-color-theme = Color theme
+label-username = Username
+label-username-required = Username is required for authentication
+label-password = Password
+label-no-dns = Do not change DNS resolver configuration
+label-no-split-dns = Disable split DNS for systemd-resolved
+label-dns-servers = Additional DNS servers
+label-ignored-dns-servers = Ignored DNS servers
+label-search-domains = Additional search domains
+label-ignored-domains = Ignored search domains
+label-routing-domains = Treat received search domains as routing domains
+label-ca-cert = Server CA root certificates
+label-no-cert-check = Disable all TLS certificate checks (INSECURE!)
+label-password-factor = Index of password factor, 1..N
+label-keychain = Store user password in the keychain
+label-ike-lifetime = IPsec IKE SA lifetime, seconds
+label-ike-persist = Save IPsec IKE session and reconnect automatically
+label-ike-version = IKE protocol version
+label-no-keepalive = Disable IPsec keepalive packets
+label-port-knock = Enable NAT-T port knocking
+label-no-routing = Ignore all acquired routes
+label-default-routing = Set default route through the tunnel
+label-add-routes = Additional static routes
+label-ignored-routes = Routes to ignore
+label-client-cert = Client certificate file
+label-driver-file = PKCS11 driver file
+label-cert-password = PFX password
+label-pkcs11-pin = PKCS11 pin
+label-cert-id = Hex ID of PKCS11 certificate
+label-cert-name = Certificate common name
+label-language = Language
+label-system-default = System default
+label-username-password = Username and password
+label-auto-connect = Automatically connect on startup
+label-auto-disconnect = Automatically disconnect on exit
+label-ip-lease-time = Custom IP lease time, seconds
+label-disable-ipv6 = Disable IPv6 when default route is enabled
+label-mtu = MTU
+label-profile-name = Profile name
+label-confirmation = Please confirm
+label-mobile-access = Mobile Access
+label-machine-cert-auth = Machine certificate authentication
+label-supported-files = Supported file types
+label-all-files = All files
+label-cancel = Cancel
+label-open = Open
+label-select-file = Select a file
+label-ca-cert-files = X.509 certificates
+label-allow-forwarding = Allow packet forwarding for tunnel interface
+label-tls-version-max = Maximum TLS version
+label-pin-required = PIN is required for HSM device authentication
+label-pin = PIN
+label-notification-level = Notification level
+
+# Tabs and expanders
+tab-general = General
+tab-advanced = Advanced
+expand-dns = DNS
+expand-routing = Routing
+expand-certificates = Certificates
+expand-ipsec = IPsec
+expand-misc = Misc Settings
+expand-ui = UI Settings
+
+# Error messages
+error-no-server-name = No server address specified
+error-no-auth = No authentication method selected
+error-file-not-exist = File does not exist: {$path}
+error-invalid-cert-id = Certificate ID not in hex format: {$id}
+error-ca-root-not-exist = CA root path does not exist: {$path}
+error-validation = Validation error
+error-profile-not-found = Profile not found: {$profile}
+error-user-input-canceled = User input canceled
+error-connection-cancelled = Connection cancelled
+error-unknown-event = Unknown event: {$event}
+error-no-service-connection = No connection to service
+error-empty-input = Input cannot be empty
+error-invalid-response = Invalid response!
+error-cannot-acquire-access-cookie = Cannot acquire access cookie!
+error-invalid-object = Invalid object
+error-no-connector = No tunnel connector
+error-tunnel-disconnected = Tunnel disconnected, last message: {$message}
+error-unexpected-reply = Unexpected reply
+error-auth-failed = Authentication failed
+error-no-login-type = Missing required parameter: login-type
+error-connection-timeout = Connection timeout
+error-cannot-send-request = Cannot send request to the service
+error-cannot-read-reply = Cannot read reply from the service
+error-no-ipv4 = No IPv4 address for {$server}
+error-sysctl-not-converged = Sysctl did not converge: {$entry}
+error-not-challenge-state = Not a challenge state
+error-no-challenge = No challenge in payload
+error-endless-challenges = Endless loop of username challenges
+error-no-pkcs12 = No PKCS12 path and password provided
+error-no-pkcs8 = No PKCS8 PEM path provided
+error-no-pkcs11 = No PKCS11 pin provided
+error-no-ipsec-session = No IPsec session
+error-request-failed-error-code = Request failed, error code: {$error_code}
+error-no-root-privileges = This program should be run as a root user!
+error-missing-required-parameters = Missing required parameters: server name and/or login type!
+error-missing-server-name = Missing required parameter: server name!
+error-no-connector-for-challenge-code = No connector to send the challenge code to!
+error-probing-failed = Probing failed, server is not reachable via NATT port!
+error-invalid-sexpr = Invalid sexpr: {$value}
+error-invalid-value = Invalid value
+error-udp-request-failed = Error sending UDP request
+error-no-tty = No attached TTY to get user input
+error-invalid-auth-response = Invalid authentication response
+error-invalid-client-settings = Invalid client settings response
+error-invalid-cert-response = Invalid certificate response
+error-certificate-enrollment-failed = Certificate enrollment failed, error code: {$code}
+error-missing-cert-path = Missing a certificate path to the PKCS12 file!
+error-missing-cert-password = Missing a PKCS12 password!
+error-missing-reg-key = Missing enrollment registration key!
+error-invalid-otp-reply = Invalid OTP reply
+error-udp-encap-failed = Cannot set UDP_ENCAP socket option, error code: {$code}
+error-so-no-check-failed = Cannot set SO_NO_CHECK socket option, error code: {$code}
+error-keepalive-failed = Keepalive failed
+error-receive-failed = Receive failed
+error-unknown-color-scheme = Unknown color-scheme value
+error-cannot-determine-ip = Cannot determine default IP
+error-device-not-found = Device {$device} not found
+error-invalid-command = Invalid command: {$command}
+error-otp-browser-failed = Unable to acquire OTP from the browser
+error-invalid-operation-mode = Invalid operation mode
+error-invalid-tunnel-type = Invalid tunnel type
+error-invalid-cert-type = Invalid cert type
+error-invalid-icon-theme = Invalid icon theme
+error-no-natt-reply = No NAT-T reply
+error-not-implemented = Not implemented
+error-unknown-packet-type = Unknown packet type
+error-no-sender = No sender
+error-empty-ccc-session = Empty CCC session
+error-no-om-session = No session in reply, VPN server may be running out of OM licenses
+error-identity-timeout = Timeout while waiting for identity response, is the login type correct?
+error-invalid-transport-type = Invalid transport type
+error-invalid-ike-version = Invalid IKE version
+error-invalid-tls-version-max = Invalid maximum TLS version
+error-certificate-verify-failed = TLS certificate validation failed. The server’s certificate is invalid, expired, or not trusted.
+error-invalid-gateway-info = Invalid gateway information response
+error-invalid-notification-level = Invalid notification level
+error-unsupported-login-type = Unsupported login type
+
+# Placeholder texts
+placeholder-domains = Comma-separated domains
+placeholder-ip-addresses = Comma-separated IP addresses
+placeholder-routes = Comma-separated x.x.x.x/x
+placeholder-certs = Comma-separated PEM or DER files
+
+# Tunnel types
+tunnel-type-ipsec = IPsec
+tunnel-type-ssl = SSL
+
+# Certificate types
+cert-type-none = None
+cert-type-pfx = PFX (PKCS12) keystore
+cert-type-pem = PEM file with certificate and private key
+cert-type-hw = HSM device
+cert-type-system = System certificate store
+
+# Transport types
+transport-type-autodetect = Autodetect
+transport-type-kernel = UDP XFRM
+transport-type-tcpt = TCPT TUN
+transport-type-udp = UDP TUN
+
+# IKE versions
+ike-version-autodetect = Autodetect
+ike-version-1 = IKEv1
+ike-version-2 = IKEv2
+
+# Notification levels
+notification-level-off = Off
+notification-level-minimal = Minimal
+notification-level-standard = Standard
+notification-level-verbose = Verbose
+
+# Icon themes
+theme-autodetect = Autodetect
+theme-dark = Dark
+theme-light = Light
+
+# Application
+app-title = SNX-RS VPN Client
+app-connection-error = Connection error
+app-connection-success = Connection succeeded
+
+# About dialog
+about-version = Version
+about-authors = Authors
+about-license = License
+
+# Authentication
+auth-dialog-title = VPN Authentication Factor
+auth-dialog-message = Please enter your authentication factor:
+
+# Status dialog
+status-dialog-title = Connection information
+status-button-copy = Copy
+status-show-stats = Show live statistics
+status-button-settings = Settings
+status-button-connect = Connect
+status-button-disconnect = Disconnect
+
+# Tray menu
+tray-menu-connect = Connect
+tray-menu-disconnect = Disconnect
+tray-menu-status = Connection status...
+tray-menu-settings = Settings...
+tray-menu-about = About...
+tray-menu-exit = Exit
+
+# Connection info
+info-connected-since = Connected since
+info-server-name = Server name
+info-user-name = User name
+info-login-type = Login type
+info-tunnel-type = Tunnel type
+info-transport-type = IPsec transport type
+info-ip-address = IP address
+info-dns-servers = DNS servers
+info-search-domains = Search domains
+info-interface = Interface
+info-dns-configured = DNS configured
+info-routing-configured = Routing configured
+info-default-route = Default route
+info-connection-profile = Connection profile
+info-rtt = RTT
+info-bytes-received = Bytes received
+info-bytes-sent = Bytes sent
+info-rate-received = Receive rate
+info-rate-sent = Send rate
+info-packets-received = Packets received
+info-packets-sent = Packets sent
+info-ike-initiator-spi = IKE SA initiator SPI
+info-ike-responder-spi = IKE SA responder SPI
+info-ike-lifetime = IKE SA lifetime
+info-ike-timestamp = IKE SA timestamp
+info-ike-expiration = IKE SA expiration
+info-esp-spi-in = Inbound ESP SPI
+info-esp-spi-out = Outbound ESP SPI
+info-esp-encryption-in = Inbound ESP encryption
+info-esp-authentication-in = Inbound ESP authentication
+info-esp-encryption-out = Outbound ESP encryption
+info-esp-authentication-out = Outbound ESP authentication
+info-ipsec-sa = IPsec SA
+
+# CLI Messages
+cli-identity-provider-auth = For identity provider authentication, open the following URL in your browser:
+cli-tunnel-connected = Tunnel connected, press Ctrl-C to exit.
+cli-tunnel-disconnected = Tunnel disconnected
+cli-another-instance-running = Another instance of snx-rs is already running
+cli-app-terminated = Application terminated due to a signal
+cli-mobile-access-auth = For mobile access authentication, login to { $url }, then find a user password in the hex form in the page HTML source and enter it here.
+cli-certificate-enrolled = Certificate enrolled successfully.
+cli-no-ike-state = No IKE SA state!
+cli-rekey-state-pending = IKE SA state has not changed yet, showing the previous state
+
+# Languages
+language-cs-CZ = Czech
+language-da-DK = Danish
+language-de-DE = German
+language-en-US = English
+language-es-ES = Spanish
+language-fi-FI = Finnish
+language-fr-FR = French
+language-hr-HR = Croatian
+language-it-IT = Italian
+language-nl-NL = Dutch
+language-no-NO = Norwegian
+language-pl-PL = Polish
+language-pt-PT = Portuguese
+language-pt-BR = Brazillian Portuguese
+language-ru-RU = Russian
+language-sk-SK = Slovak
+language-sv-SE = Swedish
+
+# Connection status messages
+connection-status-disconnected = Disconnected
+connection-status-connected = Connected
+connection-status-connecting = Connecting in progress
+connection-status-connected-since = Connected since: {$since}
+connection-status-mfa-pending = MFA pending: {$mfa_type}
+connection-connected-to = Connected to {$server}
+connection-connecting-to = Connecting to {$server}
+connection-disconnected-from = Disconnected from {$server}
+connection-disconnecting-ike-expiry = Disconnecting soon due to IKE SA expiry
+connection-rekeyed = IPsec tunnel rekeyed successfully
+
+# Login options
+login-options-server-address = Server address
+login-options-server-ip = Server IP
+login-options-client-enabled = Client enabled
+login-options-supported-protocols = Supported protocols
+login-options-preferred-protocol = Preferred protocol
+login-options-tcpt-port = TCPT port
+login-options-natt-port = NATT port
+login-options-internal-ca-fingerprint = Internal CA fingerprint
+
+# Connection profiles
+profile-delete-prompt = Are you sure to delete the selected profile?
+profile-default-name = Default
+profile-new-title = New connection profile
+profile-rename-title = Rename connection profile
+profiles-header = Connection profiles
