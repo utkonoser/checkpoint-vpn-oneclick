@@ -21,7 +21,13 @@ enum ConnectEngine {
         }
     }
 
-    static func connect(site: String, username: String, loginType: String, ignoreServerCert: Bool = true) async throws {
+    static func connect(
+        site: String,
+        username: String,
+        loginType: String,
+        ignoreServerCert: Bool = true,
+        splitDestinations: String = ""
+    ) async throws {
         let site = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let loginType = loginType.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,6 +37,9 @@ enum ConnectEngine {
         guard let password = try KeychainStore.password(site: site), !password.isEmpty else { throw Error.missingPassword }
         guard let totpRaw = try KeychainStore.totpSecret(site: site), !totpRaw.isEmpty else { throw Error.missingTOTP }
         let secret = try TOTP.parseSecret(totpRaw)
+
+        // Resolve hostnames off the main actor before writing the connect conf.
+        let addRoutes = try SplitDestinations.resolveAddRoutes(splitDestinations)
 
         // After sleep/wake the tunnel daemon often keeps a half-dead session. Always start clean.
         try? SnxClient.disconnect()
@@ -55,7 +64,8 @@ enum ConnectEngine {
                     username: username,
                     password: password,
                     mfaCode: mfa,
-                    ignoreServerCert: ignoreServerCert
+                    ignoreServerCert: ignoreServerCert,
+                    addRoutes: addRoutes
                 )
                 try await waitUntilConnected()
                 return
@@ -70,7 +80,6 @@ enum ConnectEngine {
                     || message.localizedCaseInsensitiveContains("unsuccessful")
                 guard attempt == 1, retryable else { break }
                 NSLog("ConnectEngine retry with daemon restart after: \(message)")
-                // Soft disconnect is not enough after sleep — restart LaunchDaemon (admin prompt).
                 _ = try? SnxClient.refreshStaleDaemonIfNeeded()
                 try await Task.sleep(nanoseconds: 800_000_000)
             }

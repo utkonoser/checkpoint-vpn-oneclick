@@ -80,13 +80,17 @@ struct MenuContent: View {
     var body: some View {
         Group {
             Text(statusLine)
+
             if let error = model.lastError, !error.isEmpty {
                 Text(error)
-                    .lineLimit(3)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
             }
+
             Divider()
+
             if !model.siteChoices.isEmpty {
-                Menu("Check Point site") {
+                Menu("Gateway") {
                     ForEach(model.siteChoices, id: \.self) { site in
                         Button {
                             model.selectSite(site)
@@ -99,19 +103,26 @@ struct MenuContent: View {
                         }
                     }
                 }
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || model.vpnState == .connected)
             }
-            Button("Connect") { model.connect() }
-                .disabled(!model.canConnect)
-            Button("Disconnect") { model.disconnect() }
-                .disabled(!model.canDisconnect)
+
+            if model.vpnState == .connected || (model.isBusy && model.canDisconnect) {
+                Button("Disconnect") { model.disconnect() }
+                    .disabled(!model.canDisconnect)
+            } else {
+                Button("Connect") { model.connect() }
+                    .disabled(!model.canConnect)
+            }
+
             Divider()
+
             Button("Settings…") {
                 openSettings()
                 AppWindows.bringSettingsForward()
             }
-            Button("Refresh status") { model.refreshStatus() }
+
             Divider()
+
             Button("Quit") { NSApplication.shared.terminate(nil) }
         }
         .onAppear {

@@ -16,18 +16,17 @@ This project is distributed ad-hoc (no Apple Developer Program). `NEPacketTunnel
 
 The app never talks to system `/usr/local/bin/snxctl` or `/var/run/snx-rs.sock`.
 
-## Auth / tunnel flow (reference)
+## Auth / tunnel flow
 
-1. Discover login type: `checkpoint-vpnctl` / engine `info` mode → e.g. `vpn_VPN_RA`.
-2. Connect conf (written by the app): `server-name`, `login-type`, `user-name`, base64 `password`, `mfa-code`, `tunnel-type=ipsec`, `ignore-server-cert`, **`default-route=false`** (split-tunnel; keep GW Office Mode routes).
-3. `checkpoint-vpnctl -c conf connect` asks the daemon over the Unix socket to bring up IPsec.
-4. Status / Disconnect: length-delimited JSON over the socket (`GetStatus`, `Disconnect`) — same wire shape as upstream snx-rs command mode.
-5. Routes/DNS: engine applies gateway-pushed routes onto utun; with `default-route=false` the rest of the internet stays for Karing (or the system).
+1. Discover login type: engine `info` mode → e.g. `vpn_VPN_RA`.
+2. Connect conf: `server-name`, `login-type`, `user-name`, base64 `password`, `mfa-code`, `tunnel-type=ipsec`, `ignore-server-cert`, **`default-route=false`**.
+3. Optional **split destinations** (Settings): resolve hostnames → CIDRs; set `no-routing=true` and `add-routes=...` so only those nets use the tunnel. If the list is empty, gateway Office Mode routes apply.
+4. `checkpoint-vpnctl -c conf connect` brings up IPsec via the Unix socket.
+5. Status / Disconnect: length-delimited JSON (`GetStatus`, `Disconnect`).
 
 ## Coexistence
 
-- If upstream `com.github.snx-rs` is also installed, disconnect it before using this app — two IPsec clients fight over routes.
-- Karing: work domains / geoip RU → Direct so traffic hits macOS routes → our utun.
+If upstream `com.github.snx-rs` is also installed, disconnect it before using this app — two IPsec clients fight over routes.
 
 ## License
 

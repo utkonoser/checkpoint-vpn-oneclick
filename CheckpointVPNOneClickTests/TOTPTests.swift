@@ -90,13 +90,16 @@ final class TOTPTests: XCTestCase {
         XCTAssertEqual(SnxClient.parseLoginTypes(raw), ["vpn_VPN_RA", "vpn_Something"])
     }
 
-    func testParseWorkDomains() {
-        XCTAssertEqual(
-            AppModel.parseWorkDomains("rutube.ru\n.Corp.Example\n\n  "),
-            ["rutube.ru", "corp.example"]
-        )
-        let export = AppModel.karingDirectRulesText(domains: ["rutube.ru"])
-        XCTAssertTrue(export.contains("rutube.ru"))
-        XCTAssertTrue(export.contains("Domain Suffix"))
+    func testParseSplitDestinations() {
+        let parsed = SplitDestinations.parse("""
+        10.0.0.0/8
+        192.168.1.1
+        .Corp.Example
+        rutube.ru
+
+        # comment
+        """)
+        XCTAssertEqual(parsed.cidrs, ["10.0.0.0/8", "192.168.1.1/32"])
+        XCTAssertEqual(parsed.hosts, ["corp.example", "rutube.ru"])
     }
 }

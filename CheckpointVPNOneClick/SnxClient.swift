@@ -119,7 +119,8 @@ enum SnxClient {
         username: String,
         password: String,
         mfaCode: String,
-        ignoreServerCert: Bool = true
+        ignoreServerCert: Bool = true,
+        addRoutes: [String] = []
     ) throws {
         if !isHelperInstalled() {
             try installHelper()
@@ -131,7 +132,8 @@ enum SnxClient {
             username: username,
             password: password,
             mfaCode: mfaCode,
-            ignoreServerCert: ignoreServerCert
+            ignoreServerCert: ignoreServerCert,
+            addRoutes: addRoutes
         )
         defer { try? FileManager.default.removeItem(at: configURL) }
 
@@ -360,7 +362,8 @@ enum SnxClient {
         username: String,
         password: String,
         mfaCode: String,
-        ignoreServerCert: Bool = true
+        ignoreServerCert: Bool = true,
+        addRoutes: [String] = []
     ) throws -> URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/CheckpointVPNOneClick", isDirectory: true)
@@ -373,18 +376,24 @@ enum SnxClient {
         let passwordB64 = Data(password.utf8).base64EncodedString()
         // Corporate Check Point gateways often fail snx-rs internal IPsec CA fingerprint checks
         // unless ignore-server-cert is set (same as `snx-rs -X true`).
-        // default-route=false keeps gateway-pushed corp routes without owning all internet (Karing-friendly).
-        let body = """
-        server-name=\(server)
-        login-type=\(loginType)
-        user-name=\(username)
-        password=\(passwordB64)
-        mfa-code=\(mfaCode)
-        keychain=false
-        tunnel-type=ipsec
-        ignore-server-cert=\(ignoreServerCert ? "true" : "false")
-        default-route=false
-        """
+        // default-route=false: never own all internet.
+        // When addRoutes is non-empty: no-routing=true ignores GW Office Mode routes and uses only add-routes.
+        var lines = [
+            "server-name=\(server)",
+            "login-type=\(loginType)",
+            "user-name=\(username)",
+            "password=\(passwordB64)",
+            "mfa-code=\(mfaCode)",
+            "keychain=false",
+            "tunnel-type=ipsec",
+            "ignore-server-cert=\(ignoreServerCert ? "true" : "false")",
+            "default-route=false",
+        ]
+        if !addRoutes.isEmpty {
+            lines.append("no-routing=true")
+            lines.append("add-routes=\(addRoutes.joined(separator: ","))")
+        }
+        let body = lines.joined(separator: "\n") + "\n"
         try body.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         return url

@@ -10,8 +10,8 @@ final class AppModel: ObservableObject {
     /// Corporate gateways often fail snx-rs internal IPsec CA checks without this.
     @AppStorage("snxIgnoreServerCert") var snxIgnoreServerCert: Bool = true
     @AppStorage("knownSites") private var knownSitesRaw: String = ""
-    /// One domain/suffix per line — used to export Karing Direct diversion rules.
-    @AppStorage("workDomains") var workDomains: String = ""
+    /// One CIDR/IP/hostname per line — when set, only these go through the tunnel (`add-routes`).
+    @AppStorage("workDomains") var splitDestinations: String = ""
 
     @Published var snxStatus = SnxStatus.disconnected
     @Published var lastError: String?
@@ -51,39 +51,8 @@ final class AppModel: ObservableObject {
         return names
     }
 
-    /// Normalized domain suffixes for Karing / docs (lowercase, no leading dots).
-    var workDomainList: [String] {
-        Self.parseWorkDomains(workDomains)
-    }
-
-    static nonisolated func parseWorkDomains(_ raw: String) -> [String] {
-        raw
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }
-            .filter { !$0.isEmpty }
-    }
-
-    /// Clipboard text for Karing custom diversion (Domain Suffix → Direct).
-    func karingDirectRulesText() -> String {
-        Self.karingDirectRulesText(domains: workDomainList)
-    }
-
-    static nonisolated func karingDirectRulesText(domains: [String]) -> String {
-        guard !domains.isEmpty else {
-            return """
-            # Add work domains in Settings first (one per line), then Copy again.
-            # In Karing: Diversion → Custom diversion group → Domain Suffix = each line below → action Direct.
-            """
-        }
-        var lines: [String] = [
-            "# Paste into Karing → Diversion → Custom diversion group (e.g. work-vpn).",
-            "# For each Domain Suffix below, set action to Direct.",
-            "# Also set Diversion → Country/Region so geoip for Russia (RF) uses Direct.",
-            "# Domain suffixes:",
-        ]
-        lines.append(contentsOf: domains)
-        return lines.joined(separator: "\n")
+    var parsedSplitDestinations: SplitDestinations.Parsed {
+        SplitDestinations.parse(splitDestinations)
     }
 
     init() {
@@ -243,9 +212,27 @@ final class AppModel: ObservableObject {
             .split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        if !names.contains(trimmed) {
-            names.insert(trimmed, at: 0)
-            knownSitesRaw = names.joined(separator: "\n")
+        if let idx = names.firstIndex(of: trimmed) {
+            names.remove(at: idx)
+        }
+        names.insert(trimmed, at: 0)
+        knownSitesRaw = names.joined(separator: "\n")
+        if site != trimmed {
+            site = trimmed
+        }
+    }
+
+    func forgetSite(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var names = knownSitesRaw
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0 != trimmed }
+        knownSitesRaw = names.joined(separator: "\n")
+        if site == trimmed {
+            site = names.first ?? ""
+            refreshSecrets()
         }
     }
 
@@ -268,13 +255,6 @@ final class AppModel: ObservableObject {
         let normalized = try QRCodeImporter.normalizedSecret(raw)
         try KeychainStore.setTOTPSecret(normalized, site: current)
         refreshSecrets()
-    }
-
-    @discardableResult
-    func copyKaringRulesToClipboard() -> Bool {
-        let text = karingDirectRulesText()
-        NSPasteboard.general.clearContents()
-        return NSPasteboard.general.setString(text, forType: .string)
     }
 
     func refreshStatus() {
@@ -329,6 +309,7 @@ final class AppModel: ObservableObject {
         let username = self.username
         let loginType = self.snxLoginType
         let ignoreCert = self.snxIgnoreServerCert
+        let destinations = self.splitDestinations
         rememberSite(site)
         Task {
             do {
@@ -336,7 +317,8 @@ final class AppModel: ObservableObject {
                     site: site,
                     username: username,
                     loginType: loginType,
-                    ignoreServerCert: ignoreCert
+                    ignoreServerCert: ignoreCert,
+                    splitDestinations: destinations
                 )
                 refreshStatus()
             } catch {

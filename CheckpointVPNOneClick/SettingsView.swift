@@ -6,163 +6,148 @@ struct SettingsView: View {
     @State private var password = ""
     @State private var totp = ""
     @State private var saveMessage: String?
-    @State private var karingCopyMessage: String?
     @State private var importingQR = false
 
     var body: some View {
         Form {
-            Section("VPN") {
-                if model.siteChoices.isEmpty {
-                    TextField("Site (hostname)", text: siteBinding)
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    Picker("Site", selection: siteBinding) {
-                        ForEach(model.siteChoices, id: \.self) { site in
-                            Text(site).tag(site)
-                        }
-                    }
-                    if !model.siteChoices.contains(model.site) {
-                        TextField("Site (hostname)", text: siteBinding)
+            Section {
+                stacked("Gateway") {
+                    HStack(spacing: 8) {
+                        TextField("vpn.example.com", text: $model.site)
                             .textFieldStyle(.roundedBorder)
+                            .labelsHidden()
+                            .onSubmit { commitSiteFromField() }
+                            .onChange(of: model.site) { _, _ in
+                                model.refreshSecrets()
+                            }
+
+                        if !model.siteChoices.isEmpty {
+                            Menu {
+                                ForEach(model.siteChoices, id: \.self) { site in
+                                    Button(site) {
+                                        model.selectSite(site)
+                                        password = ""
+                                        totp = ""
+                                        saveMessage = nil
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .frame(width: 28, height: 28)
+                            }
+                            .help("Saved gateways")
+                        }
+
+                        Button {
+                            commitSiteFromField()
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 28, height: 28)
+                        }
+                        .disabled(trimmedSite.isEmpty)
+                        .help("Save gateway")
+
+                        Button {
+                            model.forgetSite(model.site)
+                            password = ""
+                            totp = ""
+                            saveMessage = nil
+                        } label: {
+                            Image(systemName: "minus")
+                                .frame(width: 28, height: 28)
+                        }
+                        .disabled(!model.siteChoices.contains(trimmedSite))
+                        .help("Remove gateway")
                     }
                 }
-                TextField("Username", text: $model.username)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Login type", text: $model.snxLoginType)
-                    .textFieldStyle(.roundedBorder)
-                Text("Login type: run CheckpointVPNTunnel -m info -s <host> (e.g. vpn_VPN_RA). Password and TOTP are per site. Connect uses split-tunnel (`default-route=false`) so Karing can own the rest of the internet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                stacked("Username") {
+                    TextField("user.name", text: $model.username)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                }
+
+                stacked("Login type") {
+                    TextField("vpn_VPN_RA", text: $model.snxLoginType)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                }
+            } header: {
+                Text("Account")
             }
 
-            Section("Work domains (Karing Direct)") {
-                TextEditor(text: $model.workDomains)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 88, maxHeight: 140)
-                Text("One domain or suffix per line (e.g. rutube.ru). Used only to export Karing Direct rules — the tunnel helper still uses routes from the Check Point gateway.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Copy Karing rules") {
-                    if model.copyKaringRulesToClipboard() {
-                        karingCopyMessage = model.workDomainList.isEmpty
-                            ? "Copied placeholder — add domains and copy again."
-                            : "Copied \(model.workDomainList.count) domain(s) for Karing Direct."
-                    } else {
-                        karingCopyMessage = "Could not write to clipboard."
-                    }
-                }
-                if let karingCopyMessage {
-                    Text(karingCopyMessage).font(.caption)
-                }
-            }
-
-            Section("Tunnel helper") {
-                LabeledContent("Payload in app") {
-                    Text(SnxClient.bundledHelperPayloadURL() != nil ? "Yes" : "Missing")
-                        .foregroundStyle(SnxClient.bundledHelperPayloadURL() != nil ? .green : .orange)
-                }
-                LabeledContent("System helper") {
-                    Text(SnxClient.isHelperInstalled() ? "Installed" : "Not installed")
-                        .foregroundStyle(SnxClient.isHelperInstalled() ? .green : .orange)
-                }
-                Toggle("Ignore server certificate", isOn: $model.snxIgnoreServerCert)
-                Text("Needed for many corporate Check Point gateways (`Internal IPSec certificate validation failed`).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Install / repair tunnel helper…") { model.installHelperManually() }
-                    .disabled(model.isBusy || SnxClient.bundledHelperPayloadURL() == nil)
-                Button("Restart tunnel helper…") { model.restartDaemonManually() }
-                    .disabled(model.isBusy || !SnxClient.isHelperInstalled())
-                Text("Install copies CheckpointVPNTunnel into /Library and registers LaunchDaemon local.checkpointvpn.tunnel (admin password once). Restart is like kickstart -k after sleep.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !model.snxInstalled {
-                    Text("Build the helper with `make helper` (or Scripts/build-tunnel-helper.sh) so the app bundle includes TunnelHelper/, then Install / repair.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Current TOTP") {
+            Section {
                 TOTPLiveView(hasSecret: model.hasTOTP, site: model.site)
-            }
 
-            Section("Secrets") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Password")
-                            .fontWeight(.medium)
-                        Spacer()
-                        Text(model.hasPassword ? "Saved" : "Not set")
-                            .font(.caption)
-                            .foregroundStyle(model.hasPassword ? .green : .orange)
-                    }
-                    SecureField(
-                        model.hasPassword ? "Leave empty to keep, or type a new password" : "Enter VPN password",
-                        text: $password
-                    )
-                    .textFieldStyle(.roundedBorder)
+                secretEditor(title: "Password", text: $password, isSaved: model.hasPassword)
+                secretEditor(title: "TOTP secret", text: $totp, isSaved: model.hasTOTP)
 
-                    HStack {
-                        Text("TOTP secret")
-                            .fontWeight(.medium)
-                        Spacer()
-                        Text(model.hasTOTP ? "Saved" : "Not set")
-                            .font(.caption)
-                            .foregroundStyle(model.hasTOTP ? .green : .orange)
-                    }
-                    SecureField(
-                        model.hasTOTP ? "Leave empty to keep, or paste a new secret" : "otpauth:// URL or Base32 secret",
-                        text: $totp
-                    )
-                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 12) {
+                    Button("Save") { saveSecrets() }
+                        .disabled(password.isEmpty && totp.isEmpty)
+                    Button("Import QR…") { importingQR = true }
+                    Button("Paste QR") { importClipboardQR() }
+                }
 
-                    Text("Paste into the fields above, or import a QR. Values apply only to the selected site. Empty fields keep the current saved secret.")
+                if let saveMessage {
+                    Text(saveMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack {
-                        Button("Save secrets") { saveSecrets() }
-                            .disabled(password.isEmpty && totp.isEmpty)
-                        Button("Import QR image…") { importingQR = true }
-                        Button("Paste QR from clipboard") { importClipboardQR() }
-                    }
-                    if let saveMessage {
-                        Text(saveMessage).font(.caption)
-                    }
                 }
-                .padding(.vertical, 4)
+            } header: {
+                Text("Authentication")
             }
 
-            Section("Connect") {
-                LabeledContent("State") {
+            Section {
+                stacked("CIDRs, IPs, hostnames") {
+                    TextEditor(text: $model.splitDestinations)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 72, maxHeight: 120)
+                }
+            } header: {
+                Text("Split tunnel")
+            } footer: {
+                Text("Optional. When set, only these destinations use the VPN. Leave empty to use gateway routes.")
+            }
+
+            Section {
+                HStack {
                     Text(model.isBusy ? "Working…" : model.vpnState.title)
+                        .font(.body.weight(.medium))
+                    Spacer()
+                    if model.vpnState == .connected {
+                        Text(model.snxStatus.serverName ?? model.site)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                if model.vpnState == .connected {
-                    LabeledContent("Active site", value: model.snxStatus.serverName ?? model.site)
-                }
+
                 if let error = model.lastError, !error.isEmpty {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.red)
+                        .textSelection(.enabled)
                 }
-                HStack {
+
+                Toggle("Ignore server certificate", isOn: $model.snxIgnoreServerCert)
+
+                HStack(spacing: 12) {
                     Button("Connect") { model.connect() }
                         .keyboardShortcut(.defaultAction)
                         .disabled(!model.canConnect)
                     Button("Disconnect") { model.disconnect() }
                         .disabled(!model.canDisconnect)
+                    Spacer()
+                    Button("Repair helper…") { model.installHelperManually() }
+                        .disabled(model.isBusy || SnxClient.bundledHelperPayloadURL() == nil)
                 }
-                Text(model.snxInstalled
-                     ? "Connect needs site, username, login type, password, and TOTP. Use Karing for everything else (see README)."
-                     : "Install the tunnel helper first (Settings → Install / repair), or rebuild with `make helper` so the payload is in the app.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Session")
             }
         }
         .formStyle(.grouped)
-        .padding(8)
+        .padding(12)
+        .frame(minWidth: 420, idealWidth: 460, minHeight: 560)
         .onAppear {
             model.refreshStatus()
             model.refreshSecrets()
@@ -173,21 +158,22 @@ struct SettingsView: View {
         }
     }
 
-    private var siteBinding: Binding<String> {
-        Binding(
-            get: { model.site },
-            set: { newValue in
-                model.selectSite(newValue)
-                password = ""
-                totp = ""
-                saveMessage = nil
-            }
-        )
+    private var trimmedSite: String {
+        model.site.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func commitSiteFromField() {
+        guard !trimmedSite.isEmpty else { return }
+        model.rememberSite(trimmedSite)
+        model.refreshSecrets()
+        password = ""
+        totp = ""
+        saveMessage = nil
     }
 
     private func saveSecrets() {
         do {
-            let site = model.site.trimmingCharacters(in: .whitespacesAndNewlines)
+            let site = trimmedSite
             guard !site.isEmpty else { throw KeychainStore.Error.missingSite }
             model.rememberSite(site)
             if !password.isEmpty {
@@ -200,8 +186,8 @@ struct SettingsView: View {
             }
             model.refreshSecrets()
             saveMessage = model.hasPassword && model.hasTOTP
-                ? "Saved for \(site). Connect is ready."
-                : "Saved for \(site). Add the missing secret to enable Connect."
+                ? "Saved for \(site)"
+                : "Saved for \(site) — add the other secret to enable Connect"
         } catch {
             saveMessage = error.localizedDescription
         }
@@ -212,9 +198,7 @@ struct SettingsView: View {
             let secret = try QRCodeImporter.decodeClipboard()
             try model.importTOTP(secret)
             totp = ""
-            saveMessage = model.hasTOTP
-                ? "TOTP secret saved for \(model.site)."
-                : "Import decoded, but store did not keep it."
+            saveMessage = model.hasTOTP ? "TOTP saved for \(model.site)" : "Import failed to persist"
         } catch {
             saveMessage = error.localizedDescription
         }
@@ -229,11 +213,35 @@ struct SettingsView: View {
             let secret = try QRCodeImporter.decode(fileURL: url)
             try model.importTOTP(secret)
             totp = ""
-            saveMessage = model.hasTOTP
-                ? "TOTP secret saved for \(model.site)."
-                : "Import decoded, but store did not keep it."
+            saveMessage = model.hasTOTP ? "TOTP saved for \(model.site)" : "Import failed to persist"
         } catch {
             saveMessage = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private func stacked<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func secretEditor(title: String, text: Binding<String>, isSaved: Bool) -> some View {
+        stacked(title) {
+            HStack(spacing: 8) {
+                SecureField("", text: text)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                Text(isSaved ? "Saved" : "Not set")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(isSaved ? Color.green : Color.orange)
+                    .frame(width: 56, alignment: .trailing)
+            }
         }
     }
 }
@@ -245,23 +253,23 @@ private struct TOTPLiveView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let tick = Self.read(site: site, at: context.date)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(tick.code)
-                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                        .textSelection(.enabled)
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("\(tick.secondsLeft)s")
-                            .font(.title3.monospacedDigit())
-                        ProgressView(value: Double(tick.secondsLeft), total: Double(max(tick.period, 1)))
-                            .frame(width: 90)
-                    }
-                }
-                if !hasSecret {
-                    Text("Save a TOTP secret for this site to see the live code.")
-                        .font(.caption)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Code")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    Text(tick.code)
+                        .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                        .textSelection(.enabled)
+                        .foregroundStyle(hasSecret ? .primary : .secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(tick.secondsLeft)s")
+                        .font(.title3.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    ProgressView(value: Double(tick.secondsLeft), total: Double(max(tick.period, 1)))
+                        .frame(width: 88)
                 }
             }
         }

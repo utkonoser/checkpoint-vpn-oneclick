@@ -13,6 +13,7 @@
 		5855A1100ACB560B44C5508E /* ConnectEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D36B99AD9D3A0CED5FD3940 /* ConnectEngine.swift */; };
 		72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */; };
 		7D04DF47DA834ED3FF3A1CC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249C700FFF3713A9E3DF03DA /* SettingsView.swift */; };
+		90A05784281FEEA28FA79976 /* SplitDestinations.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A8E2C40BEBF05B3C5E6AB6 /* SplitDestinations.swift */; };
 		971498E23D9874A5ED0CB4A3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1C1638E1373D22BFF5A37A21 /* Assets.xcassets */; };
 		B801B4F7B974A06D93FBC09F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EF6C56D4D7591B9D1645A9 /* AppModel.swift */; };
 		D5309FB2663D8F3E83803273 /* CheckpointVPNOneClickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914FD065753290AC78F3B4EC /* CheckpointVPNOneClickApp.swift */; };
@@ -40,6 +41,7 @@
 		914FD065753290AC78F3B4EC /* CheckpointVPNOneClickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointVPNOneClickApp.swift; sourceTree = "<group>"; };
 		A042251630BC48547B2EE6F6 /* TOTPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPTests.swift; sourceTree = "<group>"; };
 		B0EBD2A28116D773CD33E55B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		B7A8E2C40BEBF05B3C5E6AB6 /* SplitDestinations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitDestinations.swift; sourceTree = "<group>"; };
 		BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTP.swift; sourceTree = "<group>"; };
 		BC5B85F9F28145A9AB3388E1 /* CheckpointVPNOneClickTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CheckpointVPNOneClickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D33932AADF1C640895A8CF5B /* SnxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnxClient.swift; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				18CFD0C2C7BBD21DB162D2A5 /* QRCodeImporter.swift */,
 				249C700FFF3713A9E3DF03DA /* SettingsView.swift */,
 				D33932AADF1C640895A8CF5B /* SnxClient.swift */,
+				B7A8E2C40BEBF05B3C5E6AB6 /* SplitDestinations.swift */,
 				BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */,
 			);
 			path = CheckpointVPNOneClick;
@@ -211,6 +214,7 @@
 				1BBE2EFEEA592AECFE82AC5B /* QRCodeImporter.swift in Sources */,
 				7D04DF47DA834ED3FF3A1CC6 /* SettingsView.swift in Sources */,
 				1199F890258E421DF1433C33 /* SnxClient.swift in Sources */,
+				90A05784281FEEA28FA79976 /* SplitDestinations.swift in Sources */,
 				72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
