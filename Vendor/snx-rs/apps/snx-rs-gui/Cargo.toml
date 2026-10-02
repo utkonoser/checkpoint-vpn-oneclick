@@ -1,0 +1,117 @@
+[package]
+name = "snx-rs-gui"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+snxcore = { path = "../../crates/snxcore" }
+i18n = { path = "../../crates/i18n" }
+secrecy = "0.10"
+resvg = "0.48"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1"
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio = { version = "1", features = ["rt-multi-thread", "process", "signal"] }
+clap = { version = "4", features = ["derive"] }
+clap_complete = { workspace = true }
+hex = "0.4"
+futures = "0.3"
+interprocess = { version = "2", features = ["tokio"] }
+bytes = "1"
+async-channel = "2"
+itertools = "0.15"
+uuid = { version = "1", features = ["v4"] }
+rfd = "0.17"
+i-slint-backend-winit = { version = "1", default-features = false }
+hostname = "0.4"
+chrono = "0.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.3"
+gtk4 = { version = "0.11", features = ["v4_10"], optional = true }
+nix = "0.31"
+webkit6 = { version = "0.6", optional = true }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = "0.31"
+tray-icon = "0.24"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSBundle",
+    "NSError",
+    "NSGeometry",
+    "NSURL",
+    "NSURLRequest",
+] }
+objc2 = "0.6"
+objc2-user-notifications = { version = "0.3", features = [
+    "UNUserNotificationCenter",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationTrigger",
+    "UNError",
+    "block2",
+] }
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", features = [
+    "NSResponder",
+    "NSApplication",
+    "NSView",
+    "NSWindow",
+    "NSGraphics",
+] }
+objc2-web-kit = { version = "0.3", optional = true, features = [
+    "WKWebView",
+    "WKWebViewConfiguration",
+    "WKWebsiteDataStore",
+    "WKNavigationDelegate",
+    "WKNavigation",
+    "block2",
+] }
+
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.24"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+tauri-winrt-notification = "0.8"
+webview2-com = { version = "0.39", optional = true }
+winreg = "0.56"
+tempfile = "3"
+
+[dependencies.slint]
+version = "1"
+default-features = false
+features = ["std", "backend-default", "renderer-femtovg", "renderer-software", "compat-1-2", "unstable-winit-030"]
+
+[build-dependencies]
+slint-build = "1"
+glob = "0.3"
+embed-resource = "3"
+
+[features]
+mobile-access = [
+    "dep:webkit6",
+    "dep:gtk4",
+    "dep:webview2-com",
+    "dep:objc2-web-kit",
+]

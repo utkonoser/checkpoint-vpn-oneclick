@@ -1,0 +1,354 @@
+use std::{collections::BTreeMap, net::Ipv4Addr, sync::Arc, time::Duration};
+
+use async_trait::async_trait;
+use chrono::Local;
+use snxcore::{
+    browser::BrowserController,
+    controller::{ServiceCommand, ServiceController},
+    model::{
+        AuthenticatedSession, ConnectionInfo, ConnectionStatus, MfaChallenge, MfaType, PromptInfo, SessionState,
+        TunnelSession,
+        params::{NotificationLevel, TunnelParams},
+        proto::{
+            AuthResponse, CertificateResponse, ClientSettingsResponse, ConnectivityInfo, GatewayInformation,
+            LoginOption, LoginOptionsData, ProtocolVersion,
+        },
+        wrappers::SessionId,
+    },
+    prompt::{NotificationCategory, SecurePrompt},
+    server::CommandServer,
+    tunnel::{GatewayConnector, TunnelCommand, TunnelConnector, TunnelConnectorFactory, TunnelEvent, VpnTunnel},
+};
+use tokio::sync::mpsc::{Receiver, Sender};
+use uuid::Uuid;
+
+const USERNAME: &str = "username";
+const PASSWORD: &str = "challenge";
+
+#[derive(Clone, Default)]
+struct MockTunnelConnectorFactory;
+
+impl TunnelConnectorFactory for MockTunnelConnectorFactory {
+    async fn new_tunnel_connector(
+        &self,
+        params: Arc<TunnelParams>,
+    ) -> anyhow::Result<Box<dyn TunnelConnector + Send + Sync>> {
+        Ok(Box::new(MockTunnelConnector {
+            params,
+            command_sender: None,
+        }))
+    }
+
+    fn new_gateway_connector(&self, _params: Arc<TunnelParams>) -> Arc<dyn GatewayConnector + Send + Sync> {
+        Arc::new(MockGatewayConnector)
+    }
+}
+
+struct MockGatewayConnector;
+
+#[async_trait]
+impl GatewayConnector for MockGatewayConnector {
+    async fn authenticate(&self, _username: &str) -> anyhow::Result<AuthResponse> {
+        anyhow::bail!("not implemented")
+    }
+
+    async fn challenge_code(&self, _session_id: &SessionId, _user_input: &str) -> anyhow::Result<AuthResponse> {
+        anyhow::bail!("not implemented")
+    }
+
+    async fn get_client_settings(&self, _session_id: &SessionId) -> anyhow::Result<ClientSettingsResponse> {
+        anyhow::bail!("not implemented")
+    }
+
+    async fn get_gateway_information(&self) -> anyhow::Result<GatewayInformation> {
+        Ok(GatewayInformation {
+            protocol_version: ProtocolVersion { protocol_version: 100 },
+            connectivity_info: ConnectivityInfo {
+                default_authentication_method: None,
+                client_enabled: true,
+                supported_data_tunnel_protocols: vec![],
+                connectivity_type: "".to_string(),
+                server_ip: Ipv4Addr::LOCALHOST,
+                ipsec_transport: "".to_string(),
+                tcpt_port: 0,
+                natt_port: 0,
+                connect_with_certificate_url: "".to_string(),
+                internal_ca_fingerprint: Default::default(),
+            },
+            login_options_data: Some(LoginOptionsData {
+                login_options_list: BTreeMap::from([(
+                    "1".to_string(),
+                    LoginOption {
+                        id: "vpn_Test".to_string(),
+                        secondary_realm_hash: "".to_string(),
+                        display_name: "test".to_string(),
+                        show_realm: 1,
+                        factors: Default::default(),
+                    },
+                )]),
+                login_options_md5: "".to_string(),
+            }),
+        })
+    }
+
+    async fn enroll_certificate(
+        &self,
+        _registration_key: &str,
+        _password: &str,
+    ) -> anyhow::Result<CertificateResponse> {
+        anyhow::bail!("not implemented")
+    }
+
+    async fn renew_certificate(&self, _pkcs12: &[u8], _password: &str) -> anyhow::Result<CertificateResponse> {
+        anyhow::bail!("not implemented")
+    }
+
+    async fn signout(&self, _session_id: &SessionId) -> anyhow::Result<()> {
+        anyhow::bail!("not implemented")
+    }
+}
+
+struct MockTunnelConnector {
+    params: Arc<TunnelParams>,
+    command_sender: Option<Sender<TunnelCommand>>,
+}
+
+#[async_trait]
+impl TunnelConnector for MockTunnelConnector {
+    async fn authenticate(&mut self) -> anyhow::Result<Arc<TunnelSession>> {
+        Ok(Arc::new(TunnelSession {
+            session_id: "1234".into(),
+            state: SessionState::PendingChallenge(MfaChallenge {
+                mfa_type: MfaType::UserNameInput,
+                prompt: "username".to_string(),
+            }),
+            username: None,
+        }))
+    }
+
+    async fn delete_session(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn restore_session(&mut self) -> anyhow::Result<Arc<TunnelSession>> {
+        anyhow::bail!("mock restore_session not implemented")
+    }
+
+    async fn challenge_code(
+        &mut self,
+        session: Arc<TunnelSession>,
+        user_input: &str,
+    ) -> anyhow::Result<Arc<TunnelSession>> {
+        match user_input {
+            USERNAME => Ok(Arc::new(TunnelSession {
+                state: SessionState::PendingChallenge(MfaChallenge {
+                    mfa_type: MfaType::PasswordInput,
+                    prompt: "password".to_string(),
+                }),
+                username: None,
+                ..(*session).clone()
+            })),
+            PASSWORD => Ok(Arc::new(TunnelSession {
+                state: SessionState::Authenticated(AuthenticatedSession::SslSessionKey("key".to_string())),
+                username: None,
+                ..(*session).clone()
+            })),
+            _ => {
+                anyhow::bail!("invalid user input");
+            }
+        }
+    }
+
+    async fn create_tunnel(
+        &mut self,
+        _session: Arc<TunnelSession>,
+        command_sender: Sender<TunnelCommand>,
+    ) -> anyhow::Result<Box<dyn VpnTunnel + Send>> {
+        self.command_sender = Some(command_sender);
+        Ok(Box::new(MockTunnel {
+            params: self.params.clone(),
+        }))
+    }
+
+    async fn terminate_tunnel(&mut self, signout: bool) -> anyhow::Result<()> {
+        if let Some(sender) = self.command_sender.take() {
+            let _ = sender.send(TunnelCommand::Terminate(signout)).await;
+        }
+        Ok(())
+    }
+
+    async fn handle_tunnel_event(&mut self, _event: TunnelEvent) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn rekey(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct MockTunnel {
+    params: Arc<TunnelParams>,
+}
+
+#[async_trait]
+impl VpnTunnel for MockTunnel {
+    async fn run(
+        &mut self,
+        mut command_receiver: Receiver<TunnelCommand>,
+        event_sender: Sender<TunnelEvent>,
+    ) -> anyhow::Result<()> {
+        let info = ConnectionInfo {
+            since: Some(Local::now()),
+            server_name: self.params.server_name.clone(),
+            username: USERNAME.to_string(),
+            login_type: self.params.login_type.clone(),
+            ..Default::default()
+        };
+
+        event_sender.send(TunnelEvent::Connected(Box::new(info))).await?;
+
+        while let Some(command) = command_receiver.recv().await {
+            if matches!(command, TunnelCommand::Terminate(_)) {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct MockPrompt;
+
+impl SecurePrompt for MockPrompt {
+    async fn get_secure_input(&self, _prompt: PromptInfo) -> anyhow::Result<String> {
+        Ok(PASSWORD.to_string())
+    }
+
+    async fn get_plain_input(&self, _prompt: PromptInfo) -> anyhow::Result<String> {
+        Ok(USERNAME.to_string())
+    }
+
+    async fn show_notification(
+        &self,
+        _summary: &str,
+        _message: &str,
+        _category: NotificationCategory,
+        _notification_level: NotificationLevel,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct MockBrowser;
+
+impl BrowserController for MockBrowser {
+    fn open(&self, _url: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn close(&self) {}
+
+    async fn acquire_tunnel_password(&self, _url: &str) -> anyhow::Result<String> {
+        Ok(String::new())
+    }
+}
+
+struct ServerFixture {
+    socket_name: String,
+    server_handle: tokio::task::JoinHandle<anyhow::Result<()>>,
+}
+
+impl ServerFixture {
+    async fn new() -> Self {
+        let socket_name = format!("snxcore-test-{}.sock", Uuid::new_v4());
+
+        let server = CommandServer::with_name(&socket_name, MockTunnelConnectorFactory);
+        let server_handle = tokio::spawn(server.run());
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        Self {
+            socket_name,
+            server_handle,
+        }
+    }
+}
+
+#[tokio::test]
+async fn command_server_reports_disconnected_status() {
+    let fixture = ServerFixture::new().await;
+
+    let params = Arc::new(TunnelParams::default());
+    let mut controller =
+        ServiceController::new_with_server_name(&fixture.socket_name, MockPrompt, MockBrowser, Vec::new());
+    let status = controller.command(ServiceCommand::Status, params).await.unwrap();
+    assert_eq!(status, ConnectionStatus::Disconnected);
+
+    fixture.server_handle.abort();
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn command_socket_is_connectable_by_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = ServerFixture::new().await;
+
+    // The daemon runs as root but the GUI connects as the user, so the socket must be writable by
+    // anyone; connecting to a Unix socket requires write permission on it.
+    let path = std::env::temp_dir().join(&fixture.socket_name);
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o666, "the command socket must be connectable by a non-owner");
+
+    fixture.server_handle.abort();
+}
+
+#[tokio::test]
+async fn connect_with_mfa() {
+    let fixture = ServerFixture::new().await;
+
+    let params = Arc::new(TunnelParams {
+        server_name: "127.0.0.1".to_owned(),
+        login_type: "vpn_Test".to_string(),
+        ..Default::default()
+    });
+
+    let mut controller =
+        ServiceController::new_with_server_name(&fixture.socket_name, MockPrompt, MockBrowser, Vec::new());
+    let status = controller
+        .command(ServiceCommand::Connect, params.clone())
+        .await
+        .unwrap();
+    match status {
+        ConnectionStatus::Connected(info) => {
+            assert_eq!(info.server_name, params.server_name);
+            assert_eq!(info.username, USERNAME);
+            assert_eq!(info.login_type, params.login_type);
+        }
+        _ => panic!("invalid status"),
+    }
+
+    let status = controller.command(ServiceCommand::Disconnect, params).await.unwrap();
+    assert_eq!(status, ConnectionStatus::Disconnected);
+
+    fixture.server_handle.abort();
+}
+
+#[tokio::test]
+async fn fail_wrong_login_type() {
+    let fixture = ServerFixture::new().await;
+
+    let params = Arc::new(TunnelParams {
+        server_name: "127.0.0.1".to_owned(),
+        login_type: "vpn_Other".to_string(),
+        ..Default::default()
+    });
+
+    let mut controller =
+        ServiceController::new_with_server_name(&fixture.socket_name, MockPrompt, MockBrowser, Vec::new());
+
+    let status = controller.command(ServiceCommand::Connect, params.clone()).await;
+
+    assert!(status.is_err());
+
+    fixture.server_handle.abort();
+}

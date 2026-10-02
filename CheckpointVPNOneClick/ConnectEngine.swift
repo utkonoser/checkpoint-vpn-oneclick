@@ -32,7 +32,7 @@ enum ConnectEngine {
         guard let totpRaw = try KeychainStore.totpSecret(site: site), !totpRaw.isEmpty else { throw Error.missingTOTP }
         let secret = try TOTP.parseSecret(totpRaw)
 
-        // After sleep/wake the snx-rs daemon often keeps a half-dead tunnel. Always start clean.
+        // After sleep/wake the tunnel daemon often keeps a half-dead session. Always start clean.
         try? SnxClient.disconnect()
         try await Task.sleep(nanoseconds: 400_000_000)
 

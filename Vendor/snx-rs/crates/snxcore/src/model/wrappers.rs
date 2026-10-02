@@ -1,0 +1,293 @@
+use std::{fmt, marker::PhantomData};
+
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{Error, Visitor},
+};
+
+/// String separated with commas or semicolons
+#[derive(Default, Clone, PartialEq)]
+pub struct StringList(pub Vec<String>);
+
+impl Serialize for StringList {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.join(",").serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StringList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(
+            String::deserialize(deserializer)?
+                .split([',', ';'])
+                .map(ToOwned::to_owned)
+                .collect(),
+        ))
+    }
+}
+
+impl From<Vec<String>> for StringList {
+    fn from(value: Vec<String>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<StringList> for Vec<String> {
+    fn from(value: StringList) -> Self {
+        value.0
+    }
+}
+
+impl fmt::Debug for StringList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+/// An obfuscated string which is used in CheckPoint VPN protocol to send and receive secrets.
+#[derive(Default, Clone, PartialEq)]
+pub struct ObfuscatedString(pub String);
+
+impl Serialize for ObfuscatedString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        crate::util::snx_obfuscate(self.0.as_bytes()).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ObfuscatedString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let decrypted = crate::util::snx_deobfuscate(s).map_err(Error::custom)?;
+        Ok(Self(String::from_utf8_lossy(&decrypted).into_owned()))
+    }
+}
+
+impl From<String> for ObfuscatedString {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ObfuscatedString> for String {
+    fn from(value: ObfuscatedString) -> Self {
+        value.0
+    }
+}
+
+impl<'a> From<&'a str> for ObfuscatedString {
+    fn from(value: &'a str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl fmt::Display for ObfuscatedString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "****")
+    }
+}
+
+impl fmt::Debug for ObfuscatedString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "****")
+    }
+}
+
+/// Wrapper over possibly empty non-string values
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct Maybe<T>(pub Option<T>);
+
+impl<T: Serialize> Serialize for Maybe<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.0 {
+            Some(ref v) => v.serialize(serializer),
+            None => "".serialize(serializer),
+        }
+    }
+}
+
+impl<'de, T: TryFrom<u64>> Deserialize<'de> for Maybe<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(MaybeVisitor(PhantomData))
+    }
+}
+
+#[derive(Default)]
+struct MaybeVisitor<T>(PhantomData<T>);
+
+impl<T: TryFrom<u64>> Visitor<'_> for MaybeVisitor<T> {
+    type Value = Maybe<T>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "u64 value or empty string")
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Maybe(Some(
+            v.try_into().map_err(|_| Error::custom("Cannot convert from u64"))?,
+        )))
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Maybe(None))
+    }
+
+    fn visit_string<E>(self, _: String) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Maybe(None))
+    }
+}
+
+#[derive(Default, Clone, PartialEq)]
+pub struct SessionId(pub String);
+
+impl SessionId {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Serialize for SessionId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(String::deserialize(deserializer)?))
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<SessionId> for String {
+    fn from(value: SessionId) -> Self {
+        value.0
+    }
+}
+
+impl<'a> From<&'a str> for SessionId {
+    fn from(value: &'a str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Debug for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_string_list() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Data {
+            field: StringList,
+        }
+
+        let data = Data {
+            field: StringList(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]),
+        };
+
+        let serialized = serde_json::to_string(&data).unwrap();
+        assert_eq!(serialized, r#"{"field":"a,b,c"}"#);
+
+        let deserialized = serde_json::from_str::<Data>(&serialized).unwrap();
+        assert_eq!(deserialized, data);
+
+        let deserialized = serde_json::from_str::<Data>(r#"{"field":"a;b;c"}"#).unwrap();
+        assert_eq!(deserialized, data);
+    }
+
+    #[test]
+    fn test_obfuscated_string() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Data {
+            field: ObfuscatedString,
+        }
+
+        let data = Data {
+            field: ObfuscatedString("foo".to_owned()),
+        };
+
+        let serialized = serde_json::to_string(&data).unwrap();
+        assert_eq!(
+            serialized,
+            format!("{{\"field\":\"{}\"}}", crate::util::snx_obfuscate("foo".as_bytes()))
+        );
+
+        let deserialized = serde_json::from_str::<Data>(&serialized).unwrap();
+        assert_eq!(deserialized, data);
+    }
+
+    #[test]
+    fn test_maybe() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Data {
+            field: Maybe<u64>,
+        }
+
+        let some_data = Data {
+            field: Maybe(Some(123)),
+        };
+
+        let serialized = serde_json::to_string(&some_data).unwrap();
+        assert_eq!(serialized, r#"{"field":123}"#);
+
+        let deserialized = serde_json::from_str::<Data>(&serialized).unwrap();
+        assert_eq!(deserialized, some_data);
+
+        let none = serde_json::from_str::<Data>(r#"{"field":""}"#).unwrap();
+        assert!(none.field.0.is_none());
+    }
+}

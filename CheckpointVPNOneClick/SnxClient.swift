@@ -28,8 +28,12 @@ struct SnxStatus: Equatable {
 
 enum SnxClient {
     static let defaultLoginType = "vpn_VPN_RA"
-    /// snx-rs command-mode control socket (macOS pkg).
-    static let socketPath = "/var/run/snx-rs.sock"
+    /// Own branded daemon socket (vendored snx-rs fork).
+    static let socketPath = "/var/run/checkpoint-vpn.sock"
+    static let launchdLabel = "local.checkpointvpn.tunnel"
+    static let systemSupportDir = "/Library/Application Support/CheckpointVPNTunnel"
+    static let systemCtlPath = systemSupportDir + "/checkpoint-vpnctl"
+    static let systemDaemonPath = systemSupportDir + "/CheckpointVPNTunnel"
 
     enum Error: Swift.Error, LocalizedError {
         case notInstalled
@@ -40,35 +44,70 @@ enum SnxClient {
         var errorDescription: String? {
             switch self {
             case .notInstalled:
-                return "snx-rs is not installed. Install SNX-RS.pkg from https://github.com/ancwrd1/snx-rs/releases"
+                return "Tunnel helper is not installed. Use Settings → Install tunnel helper… (admin password once)."
             case .daemonUnavailable(let message):
-                return "snx-rs daemon is not reachable (\(message)). Is the LaunchDaemon running?"
+                return "Tunnel helper is not reachable (\(message)). Try Repair tunnel helper…"
             case .failed(let message):
                 return message
             case .notPersisted:
-                return "Could not write snx-rs connect config."
+                return "Could not write tunnel connect config."
             }
         }
     }
 
+    /// True when the system helper is present, the socket exists, or the app still has a payload to install.
     static func isInstalled() -> Bool {
-        snxctlPath() != nil || FileManager.default.fileExists(atPath: socketPath)
+        isHelperInstalled() || FileManager.default.fileExists(atPath: socketPath) || bundledHelperPayloadURL() != nil
     }
 
-    static func snxctlPath() -> String? {
+    static func isHelperInstalled() -> Bool {
+        FileManager.default.isExecutableFile(atPath: systemDaemonPath)
+            && FileManager.default.isExecutableFile(atPath: systemCtlPath)
+    }
+
+    /// Directory containing CheckpointVPNTunnel, checkpoint-vpnctl, and the launchd plist.
+    static func bundledHelperPayloadURL() -> URL? {
+        let fm = FileManager.default
+        let candidates: [URL?] = [
+            Bundle.main.resourceURL?.appendingPathComponent("TunnelHelper", isDirectory: true),
+            Bundle.main.bundleURL
+                .appendingPathComponent("Contents/Resources/TunnelHelper", isDirectory: true),
+            // Dev tree: repo TunnelHelper/dist next to an unpackaged build is not available —
+            // install.sh copies dist into the app bundle.
+        ]
+        for case let url? in candidates {
+            let daemon = url.appendingPathComponent("CheckpointVPNTunnel")
+            let ctl = url.appendingPathComponent("checkpoint-vpnctl")
+            let plist = url.appendingPathComponent("local.checkpointvpn.tunnel.plist")
+            if fm.isExecutableFile(atPath: daemon.path),
+               fm.isExecutableFile(atPath: ctl.path),
+               fm.fileExists(atPath: plist.path) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    static func ctlPath() -> String? {
+        if FileManager.default.isExecutableFile(atPath: systemCtlPath) {
+            return systemCtlPath
+        }
+        if let bundled = bundledHelperPayloadURL()?
+            .appendingPathComponent("checkpoint-vpnctl"),
+           FileManager.default.isExecutableFile(atPath: bundled.path) {
+            return bundled.path
+        }
         let candidates = [
-            "/usr/local/bin/snxctl",
-            "/opt/homebrew/bin/snxctl",
-            "\(NSHomeDirectory())/.local/bin/snxctl",
+            "/usr/local/bin/checkpoint-vpnctl",
+            "\(NSHomeDirectory())/.local/bin/checkpoint-vpnctl",
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
-        return which("snxctl")
+        return which("checkpoint-vpnctl")
     }
 
     /// Fast local status via daemon socket — does not contact the VPN gateway.
-    /// (`snxctl status` always fetches gateway info first and can hang ~10s.)
     static func status() throws -> SnxStatus {
         let response = try daemonRequest("GetStatus")
         return parseDaemonStatus(response)
@@ -82,7 +121,10 @@ enum SnxClient {
         mfaCode: String,
         ignoreServerCert: Bool = true
     ) throws {
-        guard let snxctl = snxctlPath() else { throw Error.notInstalled }
+        if !isHelperInstalled() {
+            try installHelper()
+        }
+        guard let ctl = ctlPath() else { throw Error.notInstalled }
         let configURL = try writeConnectConfig(
             server: server,
             loginType: loginType,
@@ -93,11 +135,10 @@ enum SnxClient {
         )
         defer { try? FileManager.default.removeItem(at: configURL) }
 
-        // snxctl connect still needs gateway reachability for MFA prompt metadata.
-        let result = run(executable: snxctl, arguments: ["-c", configURL.path, "connect"], timeout: 90)
+        let result = run(executable: ctl, arguments: ["-c", configURL.path, "connect"], timeout: 90)
         if result.status != 0 {
             let message = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw Error.failed(message.isEmpty ? "snxctl connect failed (\(result.status))" : message)
+            throw Error.failed(message.isEmpty ? "checkpoint-vpnctl connect failed (\(result.status))" : message)
         }
     }
 
@@ -106,53 +147,94 @@ enum SnxClient {
         _ = try daemonRequest("Disconnect")
     }
 
-    /// True when an snx-rs process is alive (LaunchDaemon or leftover after sleep).
+    /// True when our tunnel daemon process is alive.
     static func isDaemonProcessRunning() -> Bool {
-        let result = run(
+        let byName = run(executable: "/usr/bin/pgrep", arguments: ["-x", "CheckpointVPNTunnel"], timeout: 2)
+        if byName.status == 0 { return true }
+        let byArgs = run(
             executable: "/usr/bin/pgrep",
-            arguments: ["-f", "snx-rs -m command"],
+            arguments: ["-f", "CheckpointVPNTunnel -m command"],
             timeout: 2
         )
-        if result.status == 0 { return true }
-        let any = run(executable: "/usr/bin/pgrep", arguments: ["-x", "snx-rs"], timeout: 2)
-        return any.status == 0
+        return byArgs.status == 0
     }
 
-    /// Kill + respawn the system LaunchDaemon (same effect as `sudo pkill snx-rs` with KeepAlive).
-    /// Needs an admin password prompt — snx-rs runs as root.
+    /// Install LaunchDaemon + binaries from the app bundle (admin password once).
+    static func installHelper() throws {
+        guard let payload = bundledHelperPayloadURL() else {
+            throw Error.failed(
+                "Tunnel helper payload is missing from the app. Rebuild with Scripts/build-tunnel-helper.sh."
+            )
+        }
+        guard let installer = installTunnelHelperScriptURL() else {
+            throw Error.failed("install-tunnel-helper.sh is missing from the app bundle.")
+        }
+        let escapedInstaller = installer.path.replacingOccurrences(of: "'", with: "'\\''")
+        let escapedPayload = payload.path.replacingOccurrences(of: "'", with: "'\\''")
+        try runAdminShell("'/bin/bash' '\(escapedInstaller)' '\(escapedPayload)'")
+        try waitForDaemon(timeout: 12)
+    }
+
+    private static func installTunnelHelperScriptURL() -> URL? {
+        if let url = Bundle.main.url(forResource: "install-tunnel-helper", withExtension: "sh") {
+            return url
+        }
+        let inResources = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Resources/install-tunnel-helper.sh")
+        if FileManager.default.isReadableFile(atPath: inResources.path) {
+            return inResources
+        }
+        let repo = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Scripts/install-tunnel-helper.sh")
+        return FileManager.default.isReadableFile(atPath: repo.path) ? repo : nil
+    }
+
+    /// Kill + respawn our LaunchDaemon. Needs an admin password prompt.
     static func restartDaemon() throws {
-        // Prefer launchctl kickstart -k (clean kill+start). Fall back to killall.
+        if !isHelperInstalled(), bundledHelperPayloadURL() != nil {
+            try installHelper()
+            return
+        }
         let shell = """
-        /bin/launchctl kickstart -k system/com.github.snx-rs 2>/dev/null \
-          || (/usr/bin/killall snx-rs 2>/dev/null; /bin/sleep 1; /bin/launchctl kickstart system/com.github.snx-rs)
+        /bin/launchctl kickstart -k system/\(launchdLabel) 2>/dev/null \
+          || (/usr/bin/killall CheckpointVPNTunnel 2>/dev/null; /bin/sleep 1; /bin/launchctl kickstart system/\(launchdLabel))
         """
+        try runAdminShell(shell)
+        try waitForDaemon(timeout: 8)
+    }
+
+    private static func runAdminShell(_ shell: String) throws {
         let escaped = shell
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         let script = "do shell script \"\(escaped)\" with administrator privileges"
-        let result = run(executable: "/usr/bin/osascript", arguments: ["-e", script], timeout: 120)
+        let result = run(executable: "/usr/bin/osascript", arguments: ["-e", script], timeout: 180)
         if result.status != 0 {
             let message = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             if message.localizedCaseInsensitiveContains("User canceled")
                 || message.localizedCaseInsensitiveContains("(-128)") {
-                throw Error.failed("Admin password canceled — snx-rs was not restarted.")
+                throw Error.failed("Admin password canceled — tunnel helper was not updated.")
             }
-            throw Error.failed(message.isEmpty ? "Failed to restart snx-rs daemon" : message)
+            throw Error.failed(message.isEmpty ? "Failed to update tunnel helper" : message)
         }
-        try waitForDaemon(timeout: 8)
     }
 
     /// Restart the daemon when idle so a half-dead post-sleep process cannot break Connect.
-    /// No-ops if the tunnel is currently Connected (would drop the session).
     @discardableResult
     static func refreshStaleDaemonIfNeeded() throws -> Bool {
         if let status = try? status(), status.state == .connected {
             return false
         }
         guard isDaemonProcessRunning() || FileManager.default.fileExists(atPath: socketPath) else {
+            // No daemon yet — try installing from the bundle once.
+            if !isHelperInstalled(), bundledHelperPayloadURL() != nil {
+                try installHelper()
+                return true
+            }
             return false
         }
-        // Soft disconnect first (no password); then hard restart like `sudo pkill snx-rs`.
         try? disconnect()
         try restartDaemon()
         return true

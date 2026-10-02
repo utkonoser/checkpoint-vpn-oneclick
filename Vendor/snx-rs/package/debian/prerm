@@ -1,0 +1,11 @@
+#!/bin/bash
+
+case "$1" in
+	purge|remove)
+		systemctl disable --now snx-rs || true
+		;;
+	*)
+		;;
+esac
+
+exit 0

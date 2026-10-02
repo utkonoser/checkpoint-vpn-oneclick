@@ -1,0 +1,386 @@
+use std::{str::FromStr, sync::Arc, time::Duration};
+
+use anyhow::{Context, anyhow};
+use futures::{SinkExt, StreamExt};
+use i18n::tr;
+use interprocess::local_socket::traits::tokio::Stream;
+use secrecy::{ExposeSecret, SecretString};
+use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+use tracing::warn;
+
+use crate::{
+    browser::BrowserController,
+    model::{
+        ConnectionStatus, MfaChallenge, MfaType, PromptInfo, TunnelServiceRequest, TunnelServiceResponse,
+        params::{CertType, TunnelParams},
+    },
+    otp::OtpListener,
+    platform::{Keychain, Platform, PlatformAccess},
+    prompt::SecurePrompt,
+    server,
+};
+
+const RECV_TIMEOUT: Duration = Duration::from_secs(2);
+const SEND_TIMEOUT: Duration = Duration::from_secs(2);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(120);
+const SERVICE_CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+async fn new_stream(name: &str) -> anyhow::Result<interprocess::local_socket::tokio::Stream> {
+    async {
+        let name = Platform::get().command_socket_name(name)?;
+        Ok::<_, anyhow::Error>(
+            tokio::time::timeout(
+                SERVICE_CONNECT_TIMEOUT,
+                interprocess::local_socket::tokio::Stream::connect(name),
+            )
+            .await??,
+        )
+    }
+    .await
+    .with_context(|| tr!("error-no-service-connection"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ServiceCommand {
+    Status,
+    Connect,
+    Disconnect,
+    Reconnect,
+    Rekey,
+}
+
+impl FromStr for ServiceCommand {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "status" => Ok(Self::Status),
+            "connect" => Ok(Self::Connect),
+            "disconnect" => Ok(Self::Disconnect),
+            "reconnect" => Ok(Self::Reconnect),
+            "rekey" => Ok(Self::Rekey),
+            other => Err(anyhow!(tr!("error-invalid-command", command = other))),
+        }
+    }
+}
+
+pub struct ServiceController<B, P> {
+    prompt: P,
+    mfa_prompts: Vec<PromptInfo>,
+    mfa_index: usize,
+    password_from_keychain: SecretString,
+    username: String,
+    browser_controller: B,
+    stream: Option<interprocess::local_socket::tokio::Stream>,
+    otp_cancel_sender: Option<tokio::sync::oneshot::Sender<()>>,
+    server_name: String,
+}
+
+impl<B, P> ServiceController<B, P>
+where
+    B: BrowserController + Send + Sync,
+    P: SecurePrompt + Send + Sync,
+{
+    pub fn new_with_prompts(prompt: P, browser_controller: B, mfa_prompts: Vec<PromptInfo>) -> Self {
+        Self::new_with_server_name(server::DEFAULT_NAME, prompt, browser_controller, mfa_prompts)
+    }
+
+    pub fn new(prompt: P, browser_controller: B) -> Self {
+        Self::new_with_prompts(prompt, browser_controller, Vec::new())
+    }
+
+    pub fn new_with_server_name<N: AsRef<str>>(
+        server_name: N,
+        prompt: P,
+        browser_controller: B,
+        mfa_prompts: Vec<PromptInfo>,
+    ) -> Self {
+        Self {
+            prompt,
+            password_from_keychain: SecretString::default(),
+            username: String::new(),
+            mfa_prompts,
+            mfa_index: 0,
+            browser_controller,
+            stream: None,
+            otp_cancel_sender: None,
+            server_name: server_name.as_ref().to_owned(),
+        }
+    }
+
+    async fn get_stream(&mut self) -> anyhow::Result<&mut interprocess::local_socket::tokio::Stream> {
+        match self.stream.take() {
+            Some(stream) => Ok(self.stream.insert(stream)),
+            None => Ok(self.stream.insert(new_stream(&self.server_name).await?)),
+        }
+    }
+
+    pub async fn command(
+        &mut self,
+        command: ServiceCommand,
+        params: Arc<TunnelParams>,
+    ) -> anyhow::Result<ConnectionStatus> {
+        match command {
+            ServiceCommand::Status => self.do_status(params, false).await,
+            ServiceCommand::Connect => self.do_connect(params).await,
+            ServiceCommand::Disconnect => self.do_disconnect(params).await,
+            ServiceCommand::Reconnect => self.do_reconnect(params).await,
+            ServiceCommand::Rekey => self.do_rekey(params).await,
+        }
+    }
+
+    pub async fn do_status(&mut self, params: Arc<TunnelParams>, with_mfa: bool) -> anyhow::Result<ConnectionStatus> {
+        let response = self.send_receive(TunnelServiceRequest::GetStatus, RECV_TIMEOUT).await?;
+        match response {
+            TunnelServiceResponse::ConnectionStatus(status) => {
+                if let (true, ConnectionStatus::Mfa(mfa)) = (with_mfa, &status) {
+                    Box::pin(self.process_mfa_request(mfa, params)).await
+                } else {
+                    Ok(status)
+                }
+            }
+            TunnelServiceResponse::Error(e) => Err(anyhow!(e)),
+            TunnelServiceResponse::Ok => Err(anyhow!("Invalid response!")),
+        }
+    }
+
+    async fn process_mfa_request(
+        &mut self,
+        mfa: &MfaChallenge,
+        params: Arc<TunnelParams>,
+    ) -> anyhow::Result<ConnectionStatus> {
+        match self.get_mfa_input(mfa, params.clone()).await {
+            Ok(input) => {
+                let result = self.do_challenge_code(input.clone(), params.clone()).await;
+                if result.is_ok()
+                    && mfa.mfa_type == MfaType::PasswordInput
+                    && self.mfa_index == params.password_factor
+                    && params.keychain
+                    && !input.is_empty()
+                {
+                    let _ = Platform::get()
+                        .new_keychain()
+                        .store_password(params.profile_id, &SecretString::from(input))
+                        .await;
+                }
+                result
+            }
+            Err(e) => {
+                let _ = self.send_receive(TunnelServiceRequest::Disconnect, RECV_TIMEOUT).await;
+                Err(e)
+            }
+        }
+    }
+
+    async fn get_mfa_input(&mut self, mfa: &MfaChallenge, params: Arc<TunnelParams>) -> anyhow::Result<String> {
+        match mfa.mfa_type {
+            MfaType::PasswordInput => {
+                let prompt = self
+                    .mfa_prompts
+                    .get(self.mfa_index)
+                    .cloned()
+                    .unwrap_or_else(|| PromptInfo::new("", &mfa.prompt));
+
+                self.mfa_index += 1;
+
+                if !params.password.expose_secret().is_empty() && self.mfa_index == params.password_factor {
+                    Ok(params.password.expose_secret().to_owned())
+                } else if !self.password_from_keychain.expose_secret().is_empty()
+                    && self.mfa_index == params.password_factor
+                {
+                    Ok(self.password_from_keychain.expose_secret().to_owned())
+                } else if let Some(ref mfa_code) = params.mfa_code
+                    && self.mfa_index != params.password_factor
+                {
+                    Ok(mfa_code.clone())
+                } else {
+                    let input = self.prompt.get_secure_input(prompt).await?;
+                    Ok(input)
+                }
+            }
+            MfaType::IdentityProvider => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                self.otp_cancel_sender = Some(tx);
+
+                let listener = OtpListener::new().await?;
+                self.browser_controller.open(&mfa.prompt)?;
+
+                tokio::select! {
+                    _ = rx => {
+                        Err(anyhow!(tr!("error-connection-cancelled")))
+                    }
+                    result = listener.acquire_otp() => {
+                        self.browser_controller.close();
+                        result.inspect_err(|e| warn!("{}", e))
+                    }
+                }
+            }
+            MfaType::MobileAccess => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                self.otp_cancel_sender = Some(tx);
+
+                let fut = self.browser_controller.acquire_tunnel_password(&mfa.prompt);
+
+                tokio::select! {
+                    _ = rx => {
+                        Err(anyhow!(tr!("error-connection-cancelled")))
+                    }
+                    result = fut => {
+                        self.browser_controller.close();
+                        result.inspect_err(|e| warn!("{}", e))
+                    }
+                }
+            }
+            MfaType::UserNameInput => {
+                let mut prompt = PromptInfo::new(tr!("label-username-required"), &mfa.prompt);
+                prompt.default_entry = if params.user_name.is_empty() {
+                    std::env::var("USER").ok()
+                } else {
+                    Some(params.user_name.clone())
+                };
+                let input = self.prompt.get_plain_input(prompt).await?;
+                self.username = input.clone();
+
+                if !self.username.is_empty()
+                    && params.keychain
+                    && params.password.expose_secret().is_empty()
+                    && let Ok(password) = Platform::get().new_keychain().acquire_password(params.profile_id).await
+                {
+                    self.password_from_keychain = password.into();
+                }
+
+                Ok(input)
+            }
+        }
+    }
+
+    async fn do_connect(&mut self, mut params: Arc<TunnelParams>) -> anyhow::Result<ConnectionStatus> {
+        if params.server_name.is_empty() {
+            anyhow::bail!(tr!("error-no-server-name"));
+        }
+
+        if params.login_type.is_empty() {
+            anyhow::bail!(tr!("error-no-login-type"));
+        }
+
+        if params.cert_type == CertType::Pkcs11 && params.cert_password.is_none() {
+            let prompt = PromptInfo::new(tr!("label-pin-required"), tr!("label-pin"));
+            match self.prompt.get_secure_input(prompt).await {
+                Ok(pin) if !pin.trim().is_empty() => {
+                    params = Arc::new(TunnelParams {
+                        cert_password: Some(pin.trim().into()),
+                        ..(*params).clone()
+                    });
+                }
+                _ => return Err(anyhow::anyhow!(tr!("error-no-pkcs11"))),
+            }
+        }
+
+        self.mfa_index = 0;
+
+        if !params.user_name.is_empty()
+            && params.keychain
+            && params.password.expose_secret().is_empty()
+            && let Ok(password) = Platform::get().new_keychain().acquire_password(params.profile_id).await
+        {
+            self.password_from_keychain = password.into();
+        }
+
+        self.username = params.user_name.clone();
+
+        let response = self
+            .send_receive(TunnelServiceRequest::Connect((*params).clone()), CONNECT_TIMEOUT)
+            .await;
+
+        let now = std::time::Instant::now();
+        loop {
+            match response {
+                Ok(TunnelServiceResponse::Ok) => match self.do_status(params.clone(), true).await {
+                    Ok(ConnectionStatus::Connecting) => {
+                        if now.elapsed() < CONNECT_TIMEOUT {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            continue;
+                        } else {
+                            anyhow::bail!(tr!("error-connection-timeout"));
+                        }
+                    }
+                    other => return other,
+                },
+                Ok(TunnelServiceResponse::Error(error)) => anyhow::bail!(error),
+                Ok(_) => anyhow::bail!(tr!("error-invalid-response")),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    async fn do_challenge_code(&mut self, code: String, params: Arc<TunnelParams>) -> anyhow::Result<ConnectionStatus> {
+        let response = self
+            .send_receive(
+                TunnelServiceRequest::ChallengeCode(code, (*params).clone()),
+                CONNECT_TIMEOUT,
+            )
+            .await;
+        match response {
+            Ok(TunnelServiceResponse::Ok) => self.do_status(params, true).await,
+            Ok(TunnelServiceResponse::Error(e)) => {
+                self.send_receive(TunnelServiceRequest::Disconnect, RECV_TIMEOUT)
+                    .await?;
+                Err(anyhow!(e))
+            }
+            Ok(_) => anyhow::bail!(tr!("error-invalid-response")),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn do_disconnect(&mut self, params: Arc<TunnelParams>) -> anyhow::Result<ConnectionStatus> {
+        if let Some(cancel_sender) = self.otp_cancel_sender.take() {
+            let _ = cancel_sender.send(());
+        }
+        self.send_receive(TunnelServiceRequest::Disconnect, RECV_TIMEOUT)
+            .await?;
+        self.do_status(params, false).await
+    }
+
+    async fn do_reconnect(&mut self, params: Arc<TunnelParams>) -> anyhow::Result<ConnectionStatus> {
+        let _ = self.do_disconnect(params.clone()).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        self.do_connect(params).await
+    }
+
+    async fn do_rekey(&mut self, params: Arc<TunnelParams>) -> anyhow::Result<ConnectionStatus> {
+        self.send_receive(TunnelServiceRequest::Rekey, CONNECT_TIMEOUT).await?;
+        self.do_status(params, false).await
+    }
+
+    async fn send_receive(
+        &mut self,
+        request: TunnelServiceRequest,
+        timeout: Duration,
+    ) -> anyhow::Result<TunnelServiceResponse> {
+        let mut aux_stream;
+
+        // for frequent polling requests, re-use the existing connection.
+        let mut stream = if request.is_polling() {
+            self.get_stream().await?
+        } else {
+            aux_stream = new_stream(&self.server_name).await?;
+            &mut aux_stream
+        };
+
+        let mut codec = LengthDelimitedCodec::new().framed(&mut stream);
+
+        let data = serde_json::to_vec(&request)?;
+
+        let Ok(Ok(_)) = tokio::time::timeout(SEND_TIMEOUT, codec.send(data.into())).await else {
+            self.stream = None;
+            anyhow::bail!(tr!("error-cannot-send-request"));
+        };
+
+        if let Ok(Some(Ok(bytes))) = tokio::time::timeout(timeout, codec.next()).await {
+            Ok(serde_json::from_slice(&bytes)?)
+        } else {
+            self.stream = None;
+            anyhow::bail!(tr!("error-cannot-read-reply"));
+        }
+    }
+}

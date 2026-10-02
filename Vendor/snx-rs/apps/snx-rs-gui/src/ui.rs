@@ -1,0 +1,173 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+use slint::{ComponentHandle, Global};
+use snxcore::{model::params::ColorTheme, profiles::ConnectionProfilesStore};
+
+pub mod about;
+pub mod prompt;
+pub mod settings;
+pub mod status;
+
+slint::include_modules!();
+
+include!(concat!(env!("OUT_DIR"), "/tr_setters.rs"));
+
+thread_local! {
+    static OPEN_WINDOWS: RefCell<HashMap<&'static str, Rc<dyn WindowController>>> =
+        RefCell::new(HashMap::new());
+}
+
+pub fn open_window<F>(name: &'static str, factory: F)
+where
+    F: FnOnce() -> anyhow::Result<Rc<dyn WindowController>> + Send + 'static,
+{
+    let _ = slint::invoke_from_event_loop(|| match OPEN_WINDOWS.with(|slot| slot.borrow().get(name).cloned()) {
+        Some(controller) => restore_and_activate_window(controller.window()),
+        None => {
+            if let Ok(controller) = factory()
+                && controller.present().is_ok()
+            {
+                store_window(controller.name(), controller);
+            }
+        }
+    });
+}
+
+pub fn spawn_from_event_loop<F, R>(f: F)
+where
+    F: Future<Output = R> + Send + 'static,
+    R: Send + 'static,
+{
+    let _ = slint::invoke_from_event_loop(|| {
+        tokio::spawn(f);
+    });
+}
+
+pub fn update_windows() {
+    let _ = slint::invoke_from_event_loop(|| {
+        OPEN_WINDOWS.with(|slot| {
+            for controller in slot.borrow().values() {
+                controller.update();
+            }
+        });
+    });
+}
+
+pub fn close_windows() {
+    let _ = slint::invoke_from_event_loop(|| {
+        OPEN_WINDOWS.with(|slot| {
+            slot.borrow_mut().clear();
+        });
+    });
+}
+
+fn store_window(name: &'static str, controller: Rc<dyn WindowController>) {
+    let this = controller.clone();
+    OPEN_WINDOWS.with(move |slot| slot.borrow_mut().insert(name, this));
+
+    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+        set_icon(controller.window());
+    });
+}
+
+fn close_window(name: &'static str) {
+    OPEN_WINDOWS.with(move |slot| slot.borrow_mut().remove(name));
+}
+
+#[cfg(not(target_os = "macos"))]
+fn restore_and_activate_window(_window: &slint::Window) {}
+
+// `focus_window` activates the LSUIElement app, but ignores minimized windows.
+#[cfg(target_os = "macos")]
+fn restore_and_activate_window(window: &slint::Window) {
+    use i_slint_backend_winit::WinitWindowAccessor;
+
+    window.with_winit_window(|w| {
+        w.set_minimized(false);
+        w.focus_window();
+    });
+}
+
+#[cfg(not(windows))]
+fn set_icon(_window: &slint::Window) {}
+
+#[cfg(windows)]
+fn set_icon(window: &slint::Window) {
+    use i_slint_backend_winit::{
+        WinitWindowAccessor,
+        winit::{self, platform::windows::IconExtWindows},
+    };
+
+    let Ok(icon) = winit::window::Icon::from_resource(1000, None) else {
+        return;
+    };
+
+    window.with_winit_window(|w| w.set_window_icon(Some(icon)));
+}
+
+pub trait WindowController {
+    fn present(&self) -> anyhow::Result<()>;
+
+    fn name(&self) -> &'static str;
+
+    fn update(&self);
+
+    fn window(&self) -> &slint::Window;
+}
+
+struct WindowScope<C: ComponentHandle> {
+    pub window: C,
+}
+
+impl<C: ComponentHandle + 'static> WindowScope<C> {
+    // Winit creates the native window at the end of the event-loop iteration.
+    fn show(&self) -> anyhow::Result<()> {
+        self.window.show()?;
+
+        let weak = self.window.as_weak();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            if let Some(window) = weak.upgrade() {
+                restore_and_activate_window(window.window());
+            }
+        });
+
+        Ok(())
+    }
+}
+
+impl<'a, C> WindowScope<C>
+where
+    C: ComponentHandle,
+    Tr<'a>: Global<'a, C>,
+    Palette<'a>: Global<'a, C>,
+{
+    fn new(window: C) -> Rc<Self> {
+        Rc::new(Self { window })
+    }
+
+    fn set_globals(&'a self) {
+        apply_translations(&self.window.global::<Tr>());
+        self.set_color_theme();
+    }
+
+    fn set_color_theme(&'a self) {
+        let scheme = match ConnectionProfilesStore::instance().get_default().color_theme {
+            ColorTheme::Light => slint::language::ColorScheme::Light,
+            ColorTheme::Dark => slint::language::ColorScheme::Dark,
+            ColorTheme::AutoDetect => return,
+        };
+
+        let palette = self.window.global::<Palette>();
+        palette.set_color_scheme(scheme);
+    }
+
+    fn weak(self: &Rc<Self>) -> std::rc::Weak<Self> {
+        Rc::downgrade(self)
+    }
+}
+
+impl<C: ComponentHandle> Drop for WindowScope<C> {
+    fn drop(&mut self) {
+        let _ = self.window.hide();
+    }
+}

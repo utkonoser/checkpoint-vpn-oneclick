@@ -30,7 +30,7 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 TextField("Login type", text: $model.snxLoginType)
                     .textFieldStyle(.roundedBorder)
-                Text("Login type comes from `snx-rs -m info -s <host>` (e.g. vpn_VPN_RA). Password and TOTP are per site. Connect uses split-tunnel (`default-route=false`) so Karing can own the rest of the internet.")
+                Text("Login type: run CheckpointVPNTunnel -m info -s <host> (e.g. vpn_VPN_RA). Password and TOTP are per site. Connect uses split-tunnel (`default-route=false`) so Karing can own the rest of the internet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -39,7 +39,7 @@ struct SettingsView: View {
                 TextEditor(text: $model.workDomains)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 88, maxHeight: 140)
-                Text("One domain or suffix per line (e.g. rutube.ru). Used only to export Karing Direct rules — snx-rs still uses routes from the Check Point gateway.")
+                Text("One domain or suffix per line (e.g. rutube.ru). Used only to export Karing Direct rules — the tunnel helper still uses routes from the Check Point gateway.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Copy Karing rules") {
@@ -56,22 +56,28 @@ struct SettingsView: View {
                 }
             }
 
-            Section("snx-rs") {
-                LabeledContent("Installed") {
-                    Text(model.snxInstalled ? "Yes" : "Missing")
-                        .foregroundStyle(model.snxInstalled ? .green : .orange)
+            Section("Tunnel helper") {
+                LabeledContent("Payload in app") {
+                    Text(SnxClient.bundledHelperPayloadURL() != nil ? "Yes" : "Missing")
+                        .foregroundStyle(SnxClient.bundledHelperPayloadURL() != nil ? .green : .orange)
+                }
+                LabeledContent("System helper") {
+                    Text(SnxClient.isHelperInstalled() ? "Installed" : "Not installed")
+                        .foregroundStyle(SnxClient.isHelperInstalled() ? .green : .orange)
                 }
                 Toggle("Ignore server certificate", isOn: $model.snxIgnoreServerCert)
-                Text("Needed for many corporate Check Point gateways (`Internal IPSec certificate validation failed`). Same as snx-rs -X.")
+                Text("Needed for many corporate Check Point gateways (`Internal IPSec certificate validation failed`).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Restart snx-rs daemon…") { model.restartDaemonManually() }
-                    .disabled(model.isBusy || !model.snxInstalled)
-                Text("Same as `sudo pkill snx-rs` / `launchctl kickstart -k`. Asks for your Mac password. App also does this on launch/wake when Idle.")
+                Button("Install / repair tunnel helper…") { model.installHelperManually() }
+                    .disabled(model.isBusy || SnxClient.bundledHelperPayloadURL() == nil)
+                Button("Restart tunnel helper…") { model.restartDaemonManually() }
+                    .disabled(model.isBusy || !SnxClient.isHelperInstalled())
+                Text("Install copies CheckpointVPNTunnel into /Library and registers LaunchDaemon local.checkpointvpn.tunnel (admin password once). Restart is like kickstart -k after sleep.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !model.snxInstalled {
-                    Text("Install SNX-RS.pkg from https://github.com/ancwrd1/snx-rs/releases (includes snxctl + LaunchDaemon). If the official Check Point client is also installed, disconnect it manually before connecting here.")
+                    Text("Build the helper with `make helper` (or Scripts/build-tunnel-helper.sh) so the app bundle includes TunnelHelper/, then Install / repair.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -123,7 +129,7 @@ struct SettingsView: View {
                 }
                 Text(model.snxInstalled
                      ? "Connect needs site, username, login type, password, and TOTP. Use Karing for everything else (see README)."
-                     : "Install snx-rs first — Connect stays disabled until snxctl is available.")
+                     : "Install the tunnel helper first (Settings → Install / repair), or rebuild with `make helper` so the payload is in the app.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -1,0 +1,32 @@
+use clap::Parser;
+
+use crate::platform::TrayEvent;
+
+#[derive(Parser, Clone)]
+#[clap(about = "VPN client for Check Point security gateway", name = "snx-rs-gui", version = env!("CARGO_PKG_VERSION"))]
+pub struct CmdlineParams {
+    #[clap(
+        long = "command",
+        short = 'm',
+        help = "Send command to the application [connect, disconnect, settings, status, exit, about]"
+    )]
+    pub command: Option<TrayEvent>,
+
+    #[clap(
+        long = "no-tray",
+        short = 'n',
+        help = "Do not create tray icon and open a status window"
+    )]
+    pub no_tray: bool,
+
+    #[clap(long = "completions", help = "Generate shell completions for the given shell")]
+    pub completions: Option<clap_complete::Shell>,
+
+    #[cfg(feature = "mobile-access")]
+    #[clap(long = "webkit", hide = true)]
+    pub webkit: bool,
+
+    #[cfg(feature = "mobile-access")]
+    #[clap(long = "webkit-ignore-cert", hide = true)]
+    pub webkit_ignore_cert: bool,
+}

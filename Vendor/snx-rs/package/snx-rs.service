@@ -1,0 +1,13 @@
+[Unit]
+Description=SNX-RS VPN client
+After = network.target network-online.target
+Wants = network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/snx-rs -m command -l info
+Restart=on-failure
+RestartPreventExitStatus=1 2 255
+
+[Install]
+WantedBy=multi-user.target

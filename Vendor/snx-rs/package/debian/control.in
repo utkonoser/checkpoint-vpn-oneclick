@@ -1,0 +1,9 @@
+Package: snx-rs
+Version: {{version}}
+Section: net
+Priority: optional
+Installed-Size: {{size}}
+Architecture: {{arch}}
+Depends: libc6 (>= {{glibc}})
+Maintainer: Dmitry Pankratov <dmitry@pankratov.net>
+Description: SNX-RS Check Point VPN Client for Linux

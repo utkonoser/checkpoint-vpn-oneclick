@@ -1,0 +1,320 @@
+# Dialog and buttons
+dialog-title = Nastavenia VPN
+button-ok = OK
+button-apply = Použiť
+button-cancel = Zrušiť
+button-close = Zavrieť
+
+# Labels
+label-server-address = Adresa VPN servera
+label-auth-method = Metóda overovania
+label-tunnel-type = Typ tunela
+label-cert-auth-type = Typ certifikátu
+label-icon-theme = Motív ikon
+label-color-theme = Farebný motív
+label-username = Používateľské meno
+label-username-required = Používateľské meno je potrebné na overenie
+label-password = Heslo
+label-no-dns = Nemeniť konfiguráciu DNS resolvera
+label-no-split-dns = Zakázať rozdelené DNS pre systemd-resolved
+label-dns-servers = Ďalšie DNS servery
+label-ignored-dns-servers = Ignorované DNS servery
+label-search-domains = Ďalšie vyhľadávacie domény
+label-ignored-domains = Ignorované vyhľadávacie domény
+label-routing-domains = Považovať prijaté vyhľadávacie domény za smerovacie domény
+label-ca-cert = Koreňové certifikáty CA servera
+label-no-cert-check = Zakázať všetky kontroly TLS certifikátov (NEBEZPEČNÉ!)
+label-password-factor = Index hesla, 1..N
+label-keychain = Uložiť heslo používateľa do úložiska kľúčov
+label-ike-lifetime = Životnosť IPsec IKE SA, sekundy
+label-ike-persist = Uložiť IPsec IKE reláciu a automaticky sa znova pripojiť
+label-ike-version = Verzia protokolu IKE
+label-no-keepalive = Zakázať pakety keepalive IPsec
+label-port-knock = Povoliť NAT-T port knocking
+label-no-routing = Ignorovať všetky získané trasy
+label-default-routing = Nastaviť predvolenú trasu cez tunel
+label-add-routes = Ďalšie statické trasy
+label-ignored-routes = Trasy na ignorovanie
+label-client-cert = Súbor klientskeho certifikátu
+label-driver-file = Súbor ovládača PKCS11
+label-cert-password = Heslo PFX
+label-pkcs11-pin = PIN PKCS11
+label-cert-id = Hexadecimálne ID certifikátu PKCS11
+label-cert-name = Spoločný názov certifikátu
+label-language = Jazyk
+label-system-default = Systémové predvolené
+label-username-password = Používateľské meno a heslo
+label-auto-connect = Automaticky sa pripojiť pri štarte
+label-auto-disconnect = Automaticky sa odpojiť pri ukončení
+label-ip-lease-time = Vlastný čas prenájmu IP, sekundy
+label-disable-ipv6 = Zakázať IPv6, keď je povolená predvolená trasa
+label-mtu = MTU
+label-profile-name = Názov profilu
+label-confirmation = Prosím potvrďte
+label-mobile-access = Mobilný prístup
+label-machine-cert-auth = Overovanie strojovým certifikátom
+label-supported-files = Podporované typy súborov
+label-all-files = Všetky súbory
+label-cancel = Zrušiť
+label-open = Otvoriť
+label-select-file = Vybrať súbor
+label-ca-cert-files = Certifikáty X.509
+label-allow-forwarding = Povoliť preposielanie paketov pre rozhranie tunela
+label-tls-version-max = Maximálna verzia TLS
+label-pin-required = PIN je potrebný na overenie zariadenia HSM
+label-pin = PIN
+label-notification-level = Úroveň oznámení
+
+# Tabs and expanders
+tab-general = Všeobecné
+tab-advanced = Rozšírené
+expand-dns = DNS
+expand-routing = Smerovanie
+expand-certificates = Certifikáty
+expand-ipsec = IPsec
+expand-misc = Ďalšie nastavenia
+expand-ui = Používateľské rozhranie
+
+# Error messages
+error-no-server-name = Nie je zadaná adresa servera
+error-no-auth = Nie je vybraná metóda overovania
+error-file-not-exist = Súbor neexistuje: {$path}
+error-invalid-cert-id = ID certifikátu nie je v hexadecimálnom formáte: {$id}
+error-ca-root-not-exist = Cesta ku koreňovému certifikátu CA neexistuje: {$path}
+error-validation = Chyba overenia
+error-profile-not-found = Profil sa nenašiel: {$profile}
+error-user-input-canceled = Vstup používateľa zrušený
+error-connection-cancelled = Pripojenie zrušené
+error-unknown-event = Neznáma udalosť: {$event}
+error-no-service-connection = Žiadne pripojenie k službe
+error-empty-input = Vstup nemôže byť prázdny
+error-invalid-object = Neplatný objekt
+error-no-connector = Žiadny konektor tunela
+error-tunnel-disconnected = Tunel odpojený, posledná správa: {$message}
+error-unexpected-reply = Neočakávaná odpoveď
+error-auth-failed = Overenie zlyhalo
+error-no-login-type = Chýba povinný parameter: login-type
+error-connection-timeout = Časový limit pripojenia
+error-invalid-response = Neplatná odpoveď
+error-cannot-acquire-access-cookie = Nemožno získať prístupový cookie!
+error-cannot-send-request = Nie je možné odoslať požiadavku na službu
+error-cannot-read-reply = Nie je možné prečítať odpoveď zo služby
+error-no-ipv4 = Žiadna IPv4 adresa pre {$server}
+error-sysctl-not-converged = Sysctl nekonvergoval: {$entry}
+error-not-challenge-state = Nie je stav výzvy
+error-no-challenge = Žiadna výzva v dátach
+error-endless-challenges = Nekonečná slučka výziev používateľského mena
+error-no-pkcs12 = Žiadna cesta PKCS12 a heslo nie sú poskytnuté
+error-no-pkcs8 = Žiadna cesta PKCS8 PEM nie je poskytnutá
+error-no-pkcs11 = Žiadny PIN PKCS11 nie je poskytnutý
+error-no-ipsec-session = Žiadna IPsec relácia
+error-request-failed-error-code = Požiadavka zlyhala, kód chyby: {$error_code}
+error-no-root-privileges = Tento program musí byť spustený ako root používateľ!
+error-missing-required-parameters = Chýbajú povinné parametre: názov servera a/alebo typ prístupu!
+error-missing-server-name = Chýba povinný parameter: názov servera!
+error-no-connector-for-challenge-code = Žiadny konektor pre odoslanie kódu výzvy!
+error-probing-failed = Kontrola zlyhala, server nie je dostupný cez port NATT!
+error-invalid-sexpr = Neplatný sexpr: {$value}
+error-invalid-value = Neplatná hodnota
+error-udp-request-failed = Chyba pri odosielaní UDP požiadavky
+error-no-tty = Žiadny TTY pripojený pre vstup používateľa
+error-invalid-auth-response = Neplatná odpoveď overenia
+error-invalid-client-settings = Neplatné nastavenia klienta
+error-invalid-cert-response = Neplatná odpoveď certifikátu
+error-certificate-enrollment-failed = Registrácia certifikátu zlyhala, kód chyby: {$code}
+error-missing-cert-path = Chýba cesta k súboru PKCS12!
+error-missing-cert-password = Chýba heslo PKCS12!
+error-missing-reg-key = Chýba registračný kľúč!
+error-invalid-otp-reply = Neplatná odpoveď OTP
+error-udp-encap-failed = Nie je možné nastaviť možnosť soketu UDP_ENCAP, kód chyby: {$code}
+error-so-no-check-failed = Nie je možné nastaviť možnosť soketu SO_NO_CHECK, kód chyby: {$code}
+error-keepalive-failed = Keepalive zlyhal
+error-receive-failed = Prijatie zlyhalo
+error-unknown-color-scheme = Neznáma hodnota farebnej schémy
+error-cannot-determine-ip = Nie je možné určiť predvolenú IP
+error-device-not-found = Zariadenie {$device} nebolo nájdené
+error-invalid-command = Neplatný príkaz: {$command}
+error-otp-browser-failed = Nie je možné získať OTP z prehliadača
+error-invalid-operation-mode = Neplatný režim prevádzky
+error-invalid-tunnel-type = Neplatný typ tunela
+error-invalid-cert-type = Neplatný typ certifikátu
+error-invalid-icon-theme = Neplatný motív ikon
+error-no-natt-reply = Žiadna odpoveď NATT
+error-not-implemented = Neimplementované
+error-unknown-packet-type = Neznámy typ paketu
+error-no-sender = Žiadny odosielateľ
+error-empty-ccc-session = Prázdna CCC relácia
+error-no-om-session = V odpovedi nie je relácia, na VPN serveri sa možno minuli licencie OM
+error-identity-timeout = Časový limit pri čakaní na odpoveď identity, je typ prístupu správny?
+error-invalid-transport-type = Neplatný typ prenosu
+error-invalid-ike-version = Neplatná verzia IKE
+error-invalid-tls-version-max = Neplatná maximálna verzia TLS
+error-certificate-verify-failed = Overenie TLS certifikátu zlyhalo. Certifikát servera je neplatný, vypršal alebo nie je dôveryhodný.
+error-invalid-gateway-info = Neplatná odpoveď s informáciami o bráne
+error-invalid-notification-level = Neplatná úroveň oznámení
+error-unsupported-login-type = Nepodporovaný typ prihlásenia
+
+# Placeholder texts
+placeholder-domains = Domény oddelené čiarkami
+placeholder-ip-addresses = IP adresy oddelené čiarkami
+placeholder-routes = Trasy oddelené čiarkami vo formáte x.x.x.x/x
+placeholder-certs = Súbory PEM alebo DER oddelené čiarkami
+
+# Tunnel types
+tunnel-type-ipsec = IPsec
+tunnel-type-ssl = SSL (zastaralé)
+
+# Certificate types
+cert-type-none = Žiadny
+cert-type-pfx = Úložisko kľúčov PFX (PKCS12)
+cert-type-pem = Súbor PEM s certifikátom a súkromným kľúčom
+cert-type-hw = Zariadenie HSM
+cert-type-system = Systémové úložisko certifikátov
+
+# Transport types
+transport-type-autodetect = Automatická detekcia
+transport-type-kernel = UDP XFRM
+transport-type-tcpt = TCPT TUN
+transport-type-udp = UDP TUN
+
+# IKE versions
+ike-version-autodetect = Automatická detekcia
+ike-version-1 = IKEv1
+ike-version-2 = IKEv2
+
+# Notification levels
+notification-level-off = Vypnuté
+notification-level-minimal = Minimálna
+notification-level-standard = Štandardná
+notification-level-verbose = Podrobná
+
+# Icon themes
+theme-autodetect = Automatická detekcia
+theme-dark = Tmavý
+theme-light = Svetlý
+
+# Connection info
+info-connected-since = Pripojené od
+info-server-name = Názov servera
+info-user-name = Používateľské meno
+info-login-type = Typ prihlásenia
+info-tunnel-type = Typ tunela
+info-transport-type = Typ transportu IPsec
+info-ip-address = IP adresa
+info-dns-servers = DNS servery
+info-search-domains = Vyhľadávacie domény
+info-interface = Rozhranie
+info-dns-configured = DNS nakonfigurované
+info-routing-configured = Smerovanie nakonfigurované
+info-default-route = Predvolená trasa
+info-connection-profile = Profil pripojenia
+info-rtt = RTT
+info-bytes-received = Prijaté bajty
+info-bytes-sent = Odoslané bajty
+info-rate-received = Rýchlosť príjmu
+info-rate-sent = Rýchlosť odosielania
+info-packets-received = Prijaté pakety
+info-packets-sent = Odoslané pakety
+info-ike-initiator-spi = SPI iniciátora IKE SA
+info-ike-responder-spi = SPI odpovedajúceho IKE SA
+info-ike-lifetime = Životnosť IKE SA
+info-ike-timestamp = Časová pečiatka IKE SA
+info-ike-expiration = Vypršanie IKE SA
+info-esp-spi-in = Prichádzajúce SPI ESP
+info-esp-spi-out = Odchádzajúce SPI ESP
+info-esp-encryption-in = Prichádzajúce šifrovanie ESP
+info-esp-authentication-in = Prichádzajúca autentifikácia ESP
+info-esp-encryption-out = Odchádzajúce šifrovanie ESP
+info-esp-authentication-out = Odchádzajúca autentifikácia ESP
+info-ipsec-sa = IPsec SA
+
+# Application
+app-title = SNX-RS VPN klient
+app-connection-error = Chyba pripojenia
+app-connection-success = Pripojenie úspešné
+
+# About dialog
+about-version = Verzia
+about-authors = Autori
+about-license = Licencia
+
+# Authentication
+auth-dialog-title = VPN autentifikačný faktor
+auth-dialog-message = Zadajte váš autentifikačný faktor:
+
+# Status dialog
+status-dialog-title = Informácie o pripojení
+status-button-copy = Kopírovať
+status-show-stats = Zobraziť živé štatistiky
+status-button-settings = Nastavenia
+status-button-connect = Pripojiť
+status-button-disconnect = Odpojiť
+
+# Tray menu
+tray-menu-connect = Pripojiť
+tray-menu-disconnect = Odpojiť
+tray-menu-status = Stav pripojenia...
+tray-menu-settings = Nastavenia...
+tray-menu-about = O aplikácii...
+tray-menu-exit = Ukončiť
+
+# CLI Messages
+cli-identity-provider-auth = Pre autentifikáciu cez poskytovateľa identity otvorte nasledujúcu URL adresu vo vašom prehliadači:
+cli-tunnel-connected = Tunel pripojený, stlačte Ctrl+C pre ukončenie.
+cli-tunnel-disconnected = Tunel odpojený
+cli-another-instance-running = Iná inštancia snx-rs už beží
+cli-app-terminated = Aplikácia ukončená signálom
+cli-mobile-access-auth = Na overenie mobilného prístupu sa prihláste na { $url }, potom nájdite používateľské heslo v hexadecimálnom tvare v HTML zdrojovom kóde stránky a zadajte ho sem.
+cli-certificate-enrolled = Certifikát bol úspešne zaregistrovaný.
+cli-no-ike-state = Žiadny stav IKE SA!
+cli-rekey-state-pending = Stav IKE SA sa zatiaľ nezmenil, zobrazuje sa predchádzajúci stav
+
+# Connection Messages
+connection-connected-to = Pripojené k {$server}
+connection-connecting-to = Pripájanie k {$server}
+connection-disconnected-from = Odpojené od {$server}
+connection-disconnecting-ike-expiry = Čoskoro dôjde k odpojeniu z dôvodu vypršania IKE SA
+connection-rekeyed = Kľúče tunela IPsec boli úspešne obnovené
+
+# Languages
+language-cs-CZ = Čeština
+language-da-DK = Dánčina
+language-de-DE = Nemčina
+language-en-US = Angličtina
+language-es-ES = Španielčina
+language-fi-FI = Fínčina
+language-fr-FR = Francúzština
+language-hr-HR = Chorvátčina
+language-it-IT = Taliančina
+language-nl-NL = Holandčina
+language-no-NO = Nórčina
+language-pl-PL = Poľština
+language-pt-PT = Portugalčina
+language-pt-BR = Brazílska portugalčina
+language-ru-RU = Ruština
+language-sk-SK = Slovenčina
+language-sv-SE = Švédčina
+
+# Connection status messages
+connection-status-disconnected = Odpojené
+connection-status-connected = Pripojené
+connection-status-connecting = Prebieha pripájanie
+connection-status-connected-since = Pripojené od: {$since}
+connection-status-mfa-pending = Čakanie na MFA: {$mfa_type}
+
+# Login options
+login-options-server-address = Adresa servera
+login-options-server-ip = IP servera
+login-options-client-enabled = Klient povolený
+login-options-supported-protocols = Podporované protokoly
+login-options-preferred-protocol = Preferovaný protokol
+login-options-tcpt-port = Port TCPT
+login-options-natt-port = Port NATT
+login-options-internal-ca-fingerprint = Odtlačok interného CA
+
+# Connection profiles
+profile-delete-prompt = Naozaj chcete zmazať vybraný profil?
+profile-default-name = Predvolený
+profile-new-title = Nový profil pripojenia
+profile-rename-title = Premenovať profil pripojenia
+profiles-header = Profily pripojenia

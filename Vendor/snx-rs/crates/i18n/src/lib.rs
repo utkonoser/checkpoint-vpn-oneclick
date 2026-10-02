@@ -1,0 +1,74 @@
+use std::{
+    borrow::Cow,
+    sync::{LazyLock, RwLock},
+};
+
+use cached::cached;
+pub use fluent_templates;
+use fluent_templates::{LanguageIdentifier, Loader, fluent_bundle::FluentValue, static_loader};
+
+static_loader! {
+    pub static LOCALES = {
+        locales: "./assets",
+        fallback_language: "en-US",
+        customise: |bundle| bundle.set_use_isolating(false),
+    };
+}
+
+static APP_LOCALE: LazyLock<RwLock<Option<LanguageIdentifier>>> = LazyLock::new(|| RwLock::new(None));
+
+#[macro_export]
+macro_rules! tr {
+    ($message_id:literal) => {
+        i18n::translate($message_id)
+    };
+
+    ($message_id:literal, $($key:ident = $value:expr),*) => {
+        {
+                i18n::translate_with_args(
+                    $message_id,
+                    [$((std::borrow::Cow::Borrowed(stringify!($key)), $value.to_string().into()))*])
+        }
+    };
+}
+
+pub fn translate(key: &str) -> String {
+    LOCALES.lookup(&get_locale(), key)
+}
+
+pub fn translate_for_locale(locale: &LanguageIdentifier, key: &str) -> String {
+    LOCALES.lookup(locale, key)
+}
+
+pub fn translate_with_args<I>(key: &str, args: I) -> String
+where
+    I: IntoIterator<Item = (Cow<'static, str>, FluentValue<'static>)>,
+{
+    let args = args.into_iter().collect::<std::collections::HashMap<_, _>>();
+    LOCALES.lookup_with_args(&get_locale(), key, &args)
+}
+
+#[cached]
+pub fn get_user_locale() -> LanguageIdentifier {
+    let lang = sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string());
+    lang.parse().or_else(|_| "en-US".parse()).unwrap_or_default()
+}
+
+pub fn set_locale(lang: Option<LanguageIdentifier>) {
+    *APP_LOCALE.write().unwrap_or_else(|e| e.into_inner()) = lang;
+}
+
+pub fn get_locale() -> LanguageIdentifier {
+    APP_LOCALE
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(get_user_locale)
+}
+
+#[cached]
+pub fn get_locales() -> Vec<LanguageIdentifier> {
+    let mut locales = LOCALES.locales().cloned().collect::<Vec<_>>();
+    locales.sort();
+    locales
+}
