@@ -291,6 +291,7 @@ enum SnxClient {
         let passwordB64 = Data(password.utf8).base64EncodedString()
         // Corporate Check Point gateways often fail snx-rs internal IPsec CA fingerprint checks
         // unless ignore-server-cert is set (same as `snx-rs -X true`).
+        // default-route=false keeps gateway-pushed corp routes without owning all internet (Karing-friendly).
         let body = """
         server-name=\(server)
         login-type=\(loginType)
@@ -300,6 +301,7 @@ enum SnxClient {
         keychain=false
         tunnel-type=ipsec
         ignore-server-cert=\(ignoreServerCert ? "true" : "false")
+        default-route=false
         """
         try body.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)

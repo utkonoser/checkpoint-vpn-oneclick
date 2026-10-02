@@ -6,18 +6,12 @@ struct SettingsView: View {
     @State private var password = ""
     @State private var totp = ""
     @State private var saveMessage: String?
+    @State private var karingCopyMessage: String?
     @State private var importingQR = false
 
     var body: some View {
         Form {
             Section("VPN") {
-                Toggle("Red Shield", isOn: model.redShieldToggle)
-                    .disabled(model.isBusy || !model.redShieldInstalled)
-                Text(model.redShieldInstalled
-                     ? "Swaps Check Point (snx-rs) and Red Shield."
-                     : "Install Red Shield VPN in /Applications to enable this switch.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 if model.siteChoices.isEmpty {
                     TextField("Site (hostname)", text: siteBinding)
                         .textFieldStyle(.roundedBorder)
@@ -36,9 +30,30 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 TextField("Login type", text: $model.snxLoginType)
                     .textFieldStyle(.roundedBorder)
-                Text("Login type comes from `snx-rs -m info -s <host>` (e.g. vpn_VPN_RA). Password and TOTP are per site.")
+                Text("Login type comes from `snx-rs -m info -s <host>` (e.g. vpn_VPN_RA). Password and TOTP are per site. Connect uses split-tunnel (`default-route=false`) so Karing can own the rest of the internet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Work domains (Karing Direct)") {
+                TextEditor(text: $model.workDomains)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 88, maxHeight: 140)
+                Text("One domain or suffix per line (e.g. rutube.ru). Used only to export Karing Direct rules — snx-rs still uses routes from the Check Point gateway.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Copy Karing rules") {
+                    if model.copyKaringRulesToClipboard() {
+                        karingCopyMessage = model.workDomainList.isEmpty
+                            ? "Copied placeholder — add domains and copy again."
+                            : "Copied \(model.workDomainList.count) domain(s) for Karing Direct."
+                    } else {
+                        karingCopyMessage = "Could not write to clipboard."
+                    }
+                }
+                if let karingCopyMessage {
+                    Text(karingCopyMessage).font(.caption)
+                }
             }
 
             Section("snx-rs") {
@@ -87,29 +102,9 @@ struct SettingsView: View {
                 }
             }
 
-            if model.redShieldInstalled {
-                Section("Red Shield permissions") {
-                    LabeledContent("Accessibility") {
-                        Text(model.accessibilityTrusted ? "Granted" : "Required")
-                            .foregroundStyle(model.accessibilityTrusted ? .green : .orange)
-                    }
-                    Text("Needed only to click Connect/Disconnect in Red Shield VPN.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Button("Request Accessibility") { model.requestAccessibility() }
-                        Button("Open Accessibility settings") { model.openAccessibilitySettings() }
-                    }
-                }
-            }
-
             Section("Connect") {
                 LabeledContent("State") {
-                    Text(model.isBusy ? "Working…" : (
-                        model.redShieldConnected && model.vpnState != .connected
-                            ? "Connected — Red Shield"
-                            : model.vpnState.title
-                    ))
+                    Text(model.isBusy ? "Working…" : model.vpnState.title)
                 }
                 if model.vpnState == .connected {
                     LabeledContent("Active site", value: model.snxStatus.serverName ?? model.site)
@@ -127,7 +122,7 @@ struct SettingsView: View {
                         .disabled(!model.canDisconnect)
                 }
                 Text(model.snxInstalled
-                     ? "Connect needs site, username, login type, password, and TOTP. Disconnect uses the local snx-rs daemon (works even if the gateway is unreachable)."
+                     ? "Connect needs site, username, login type, password, and TOTP. Use Karing for everything else (see README)."
                      : "Install snx-rs first — Connect stays disabled until snxctl is available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -138,7 +133,6 @@ struct SettingsView: View {
         .onAppear {
             model.refreshStatus()
             model.refreshSecrets()
-            model.refreshPermissions()
             AppWindows.bringSettingsForward()
         }
         .fileImporter(isPresented: $importingQR, allowedContentTypes: [.image], allowsMultipleSelection: false) { result in

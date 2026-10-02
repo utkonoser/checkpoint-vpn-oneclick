@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stable install so Accessibility TCC sticks across rebuilds.
+# Stable install path across rebuilds.
 # Ad-hoc DerivedData binaries get a new CDHash every build; macOS then
 # treats them as a different app even if the toggle is still on.
 set -euo pipefail
@@ -120,4 +120,4 @@ xattr -dr com.apple.quarantine "$INSTALL" 2>/dev/null || true
 
 echo "Installed $INSTALL"
 open "$INSTALL"
-echo "Enable Checkpoint VPN in System Settings → Privacy & Security → Accessibility, then Quit from the menu bar and reopen ~/Applications/CheckpointVPNOneClick.app"
+echo "Quit from the menu bar and reopen ~/Applications/CheckpointVPNOneClick.app if it was already running."

@@ -10,6 +10,8 @@ final class AppModel: ObservableObject {
     /// Corporate gateways often fail snx-rs internal IPsec CA checks without this.
     @AppStorage("snxIgnoreServerCert") var snxIgnoreServerCert: Bool = true
     @AppStorage("knownSites") private var knownSitesRaw: String = ""
+    /// One domain/suffix per line — used to export Karing Direct diversion rules.
+    @AppStorage("workDomains") var workDomains: String = ""
 
     @Published var snxStatus = SnxStatus.disconnected
     @Published var lastError: String?
@@ -17,9 +19,6 @@ final class AppModel: ObservableObject {
     @Published var hasPassword = false
     @Published var hasTOTP = false
     @Published var snxInstalled = false
-    @Published var accessibilityTrusted = false
-    @Published var redShieldInstalled = false
-    @Published var redShieldConnected = false
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -52,13 +51,47 @@ final class AppModel: ObservableObject {
         return names
     }
 
+    /// Normalized domain suffixes for Karing / docs (lowercase, no leading dots).
+    var workDomainList: [String] {
+        Self.parseWorkDomains(workDomains)
+    }
+
+    static nonisolated func parseWorkDomains(_ raw: String) -> [String] {
+        raw
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Clipboard text for Karing custom diversion (Domain Suffix → Direct).
+    func karingDirectRulesText() -> String {
+        Self.karingDirectRulesText(domains: workDomainList)
+    }
+
+    static nonisolated func karingDirectRulesText(domains: [String]) -> String {
+        guard !domains.isEmpty else {
+            return """
+            # Add work domains in Settings first (one per line), then Copy again.
+            # In Karing: Diversion → Custom diversion group → Domain Suffix = each line below → action Direct.
+            """
+        }
+        var lines: [String] = [
+            "# Paste into Karing → Diversion → Custom diversion group (e.g. work-vpn).",
+            "# For each Domain Suffix below, set action to Direct.",
+            "# Also set Diversion → Country/Region so geoip for Russia (RF) uses Direct.",
+            "# Domain suffixes:",
+        ]
+        lines.append(contentsOf: domains)
+        return lines.joined(separator: "\n")
+    }
+
     init() {
         refreshStatus()
         refreshSecrets()
         let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshStatus()
-                self?.refreshPermissions()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -70,11 +103,8 @@ final class AppModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshStatus()
-                self?.refreshPermissions()
             }
         }
-        // After lid-close the snx-rs daemon keeps a dead tunnel; drop it on wake so the next
-        // Connect starts clean (avoids stale IPsec / certificate / 503 MFA failures).
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
@@ -84,8 +114,6 @@ final class AppModel: ObservableObject {
                 self?.handleWake()
             }
         }
-        // Same idea as `sudo pkill snx-rs`: if an idle daemon is already running at launch,
-        // restart it once (admin password) so Connect is not stuck on a half-dead process.
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 600_000_000)
             self.restartStaleDaemonIfNeeded(reason: "launch")
@@ -100,7 +128,6 @@ final class AppModel: ObservableObject {
         restartStaleDaemonIfNeeded(reason: "wake")
     }
 
-    /// Restart root snx-rs when we are not Connected. Needs admin (same as sudo pkill).
     func restartStaleDaemonIfNeeded(reason: String) {
         guard snxInstalled, !isBusy else { return }
         if vpnState == .connected { return }
@@ -122,7 +149,6 @@ final class AppModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    // Canceling the password dialog is fine — Connect can still be tried.
                     let message = error.localizedDescription
                     if !message.localizedCaseInsensitiveContains("canceled") {
                         self.lastError = message
@@ -168,24 +194,15 @@ final class AppModel: ObservableObject {
     }
 
     var canDisconnect: Bool {
-        // Always offer Disconnect when snx-rs is present — recovers hung tunnels even if
-        // status last reported Idle (snxctl gateway probe used to hide Connected).
         !isBusy && snxInstalled
     }
 
     var menuBarConnected: Bool {
-        vpnState == .connected || redShieldConnected
+        vpnState == .connected
     }
 
     var menuBarImageName: String {
         menuBarConnected ? "MenuBarConnected" : "MenuBarDisconnected"
-    }
-
-    var redShieldToggle: Binding<Bool> {
-        Binding(
-            get: { self.redShieldConnected },
-            set: { self.swapVPNs(wantRedShield: $0) }
-        )
     }
 
     func selectSite(_ name: String) {
@@ -220,21 +237,6 @@ final class AppModel: ObservableObject {
             hasPassword = false
             hasTOTP = false
         }
-        refreshPermissions()
-    }
-
-    func refreshPermissions() {
-        // Accessibility is only needed for Red Shield CGEvent clicks.
-        let trusted = RedShieldVPN.isTrusted(prompt: false)
-        if trusted != accessibilityTrusted {
-            accessibilityTrusted = trusted
-        }
-    }
-
-    func requestAccessibility() {
-        _ = RedShieldVPN.isTrusted(prompt: true)
-        refreshPermissions()
-        openAccessibilitySettings()
     }
 
     func importTOTP(_ raw: String) throws {
@@ -245,13 +247,19 @@ final class AppModel: ObservableObject {
         refreshSecrets()
     }
 
+    @discardableResult
+    func copyKaringRulesToClipboard() -> Bool {
+        let text = karingDirectRulesText()
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(text, forType: .string)
+    }
+
     func refreshStatus() {
         let installed = SnxClient.isInstalled()
         if installed != snxInstalled {
             snxInstalled = installed
         }
 
-        // Socket IPC is fast, but keep it off the main actor so a stuck daemon cannot freeze the menu.
         Task.detached(priority: .utility) {
             let snx: Result<SnxStatus, Error>
             if installed {
@@ -259,8 +267,6 @@ final class AppModel: ObservableObject {
             } else {
                 snx = .success(.disconnected)
             }
-            let rsInstalled = RedShieldVPN.isInstalled()
-            let rsConnected = rsInstalled && RedShieldVPN.isConnected()
             await MainActor.run {
                 switch snx {
                 case .success(let new):
@@ -272,7 +278,6 @@ final class AppModel: ObservableObject {
                         self.site = server
                         self.refreshSecrets()
                     }
-                    // Clear stale daemon/gateway errors once status works again.
                     if let err = self.lastError,
                        err.localizedCaseInsensitiveContains("clients/")
                         || err.localizedCaseInsensitiveContains("daemon")
@@ -280,22 +285,14 @@ final class AppModel: ObservableObject {
                         self.lastError = nil
                     }
                 case .failure(let error):
-                    // Do not flip Connected → Idle on a transient socket blip; only record idle when sure.
                     if case SnxClient.Error.daemonUnavailable = error {
                         if self.snxStatus.state != .idle {
                             self.snxStatus = .disconnected
                         }
                     }
-                    // Avoid spamming the menu every 2s; keep one short note.
                     if !self.isBusy {
                         self.lastError = error.localizedDescription
                     }
-                }
-                if rsInstalled != self.redShieldInstalled {
-                    self.redShieldInstalled = rsInstalled
-                }
-                if rsConnected != self.redShieldConnected {
-                    self.redShieldConnected = rsConnected
                 }
             }
         }
@@ -312,10 +309,6 @@ final class AppModel: ObservableObject {
         rememberSite(site)
         Task {
             do {
-                // Work VPN and Red Shield fight over routes; after sleep RS often comes back first.
-                if RedShieldVPN.isConnected() {
-                    try await RedShieldVPN.setConnected(false)
-                }
                 try await ConnectEngine.connect(
                     site: site,
                     username: username,
@@ -332,8 +325,6 @@ final class AppModel: ObservableObject {
     }
 
     func disconnect() {
-        // Always allow an explicit disconnect attempt when not busy — recovers hung tunnels
-        // even if the last status poll failed to report Connected.
         guard !isBusy, snxInstalled else { return }
         isBusy = true
         lastError = nil
@@ -355,56 +346,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func swapVPNs(wantRedShield: Bool) {
-        guard redShieldInstalled, !isBusy else { return }
-        if wantRedShield, redShieldConnected { return }
-        if !wantRedShield, !redShieldConnected, vpnState == .connected { return }
-
-        isBusy = true
-        lastError = nil
-        let site = self.site
-        let username = self.username
-        let loginType = self.snxLoginType
-        let ignoreCert = self.snxIgnoreServerCert
-        Task {
-            do {
-                if wantRedShield {
-                    _ = try await RedShieldVPN.ensureRunning()
-                    // Always tear down Check Point first (socket disconnect; no gateway needed).
-                    try? ConnectEngine.disconnect()
-                    self.snxStatus = .disconnected
-                    try await RedShieldVPN.setConnected(true)
-                } else {
-                    if RedShieldVPN.isConnected() {
-                        try await RedShieldVPN.setConnected(false)
-                    }
-                    try await ConnectEngine.connect(
-                        site: site,
-                        username: username,
-                        loginType: loginType,
-                        ignoreServerCert: ignoreCert
-                    )
-                }
-                refreshStatus()
-            } catch {
-                lastError = Self.friendlyConnectError(error)
-                refreshStatus()
-            }
-            isBusy = false
-        }
-    }
-
-    func openAccessibilitySettings() {
-        openPrivacyPane("Privacy_Accessibility")
-    }
-
     static func friendlyConnectError(_ error: Error) -> String {
         let message = error.localizedDescription
         if message.localizedCaseInsensitiveContains("Internal IPSec certificate") {
             return """
-            \(message) — often after sleep with a half-dead snx-rs tunnel or Red Shield still up. \
-            Tap Disconnect, turn Red Shield off, then Connect again. If it persists: \
-            sudo launchctl kickstart -k system/com.github.snx-rs
+            \(message) — often after sleep with a half-dead snx-rs tunnel. \
+            Tap Disconnect, then Connect again. If it persists: \
+            sudo launchctl kickstart -k system/com.github.snx-rs \
+            (or Restart snx-rs daemon in Settings).
             """
         }
         if message.localizedCaseInsensitiveContains("503")
@@ -415,15 +364,5 @@ final class AppModel: ObservableObject {
             """
         }
         return message
-    }
-
-    private func openPrivacyPane(_ anchor: String) {
-        let urls = [
-            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?\(anchor)",
-            "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
-        ]
-        for raw in urls {
-            if let url = URL(string: raw), NSWorkspace.shared.open(url) { return }
-        }
     }
 }

@@ -90,15 +90,13 @@ final class TOTPTests: XCTestCase {
         XCTAssertEqual(SnxClient.parseLoginTypes(raw), ["vpn_VPN_RA", "vpn_Something"])
     }
 
-    func testRedShieldInstalledOnlyWhenPathExists() throws {
-        let missing = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rs-missing-\(UUID().uuidString)")
-        XCTAssertFalse(RedShieldVPN.isInstalled(at: missing.path))
-
-        let present = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rs-present-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: present, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: present) }
-        XCTAssertTrue(RedShieldVPN.isInstalled(at: present.path))
+    func testParseWorkDomains() {
+        XCTAssertEqual(
+            AppModel.parseWorkDomains("rutube.ru\n.Corp.Example\n\n  "),
+            ["rutube.ru", "corp.example"]
+        )
+        let export = AppModel.karingDirectRulesText(domains: ["rutube.ru"])
+        XCTAssertTrue(export.contains("rutube.ru"))
+        XCTAssertTrue(export.contains("Domain Suffix"))
     }
 }

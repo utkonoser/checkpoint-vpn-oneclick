@@ -10,7 +10,6 @@
 		040FE429A39D4CF790B4948D /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EBD2A28116D773CD33E55B /* KeychainStore.swift */; };
 		1199F890258E421DF1433C33 /* SnxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D33932AADF1C640895A8CF5B /* SnxClient.swift */; };
 		1BBE2EFEEA592AECFE82AC5B /* QRCodeImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18CFD0C2C7BBD21DB162D2A5 /* QRCodeImporter.swift */; };
-		3274E921082E7523E7596F0D /* RedShieldVPN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781B66DE10A6665DC7056511 /* RedShieldVPN.swift */; };
 		5855A1100ACB560B44C5508E /* ConnectEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D36B99AD9D3A0CED5FD3940 /* ConnectEngine.swift */; };
 		72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */; };
 		7D04DF47DA834ED3FF3A1CC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249C700FFF3713A9E3DF03DA /* SettingsView.swift */; };
@@ -38,7 +37,6 @@
 		27EF6C56D4D7591B9D1645A9 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		29BA26CCCCE6E4FB7BE9182D /* CheckpointVPNOneClick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CheckpointVPNOneClick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4D36B99AD9D3A0CED5FD3940 /* ConnectEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectEngine.swift; sourceTree = "<group>"; };
-		781B66DE10A6665DC7056511 /* RedShieldVPN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedShieldVPN.swift; sourceTree = "<group>"; };
 		914FD065753290AC78F3B4EC /* CheckpointVPNOneClickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointVPNOneClickApp.swift; sourceTree = "<group>"; };
 		A042251630BC48547B2EE6F6 /* TOTPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPTests.swift; sourceTree = "<group>"; };
 		B0EBD2A28116D773CD33E55B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -76,7 +74,6 @@
 				0CB01AD572A42B7262BD0EB6 /* Info.plist */,
 				B0EBD2A28116D773CD33E55B /* KeychainStore.swift */,
 				18CFD0C2C7BBD21DB162D2A5 /* QRCodeImporter.swift */,
-				781B66DE10A6665DC7056511 /* RedShieldVPN.swift */,
 				249C700FFF3713A9E3DF03DA /* SettingsView.swift */,
 				D33932AADF1C640895A8CF5B /* SnxClient.swift */,
 				BBB72A73FF1A9ACDB087EE7A /* TOTP.swift */,
@@ -212,7 +209,6 @@
 				5855A1100ACB560B44C5508E /* ConnectEngine.swift in Sources */,
 				040FE429A39D4CF790B4948D /* KeychainStore.swift in Sources */,
 				1BBE2EFEEA592AECFE82AC5B /* QRCodeImporter.swift in Sources */,
-				3274E921082E7523E7596F0D /* RedShieldVPN.swift in Sources */,
 				7D04DF47DA834ED3FF3A1CC6 /* SettingsView.swift in Sources */,
 				1199F890258E421DF1433C33 /* SnxClient.swift in Sources */,
 				72A727AF6BF1D6DAC62D5A9E /* TOTP.swift in Sources */,

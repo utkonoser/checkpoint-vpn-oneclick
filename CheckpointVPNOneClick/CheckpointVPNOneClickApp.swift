@@ -19,7 +19,7 @@ struct CheckpointVPNOneClickApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(width: 500, height: 680)
+                .frame(width: 500, height: 720)
                 .onAppear { AppWindows.bringSettingsForward() }
         }
     }
@@ -105,10 +105,6 @@ struct MenuContent: View {
                 .disabled(!model.canConnect)
             Button("Disconnect") { model.disconnect() }
                 .disabled(!model.canDisconnect)
-            Button(model.redShieldConnected ? "Switch to Check Point" : "Switch to Red Shield") {
-                model.swapVPNs(wantRedShield: !model.redShieldConnected)
-            }
-            .disabled(model.isBusy || !model.redShieldInstalled)
             Divider()
             Button("Settings…") {
                 openSettings()
@@ -126,16 +122,12 @@ struct MenuContent: View {
 
     private var statusLine: String {
         if model.isBusy {
-            if model.redShieldConnected { return "Working… Red Shield" }
             let site = model.site.isEmpty ? "…" : model.site
             return "Working… \(site)"
         }
         if model.vpnState == .connected {
             let site = model.snxStatus.serverName ?? model.site
             return "Connected — \(site)"
-        }
-        if model.redShieldConnected {
-            return "Connected — Red Shield"
         }
         let site = model.site.isEmpty ? "…" : model.site
         return "\(model.vpnState.title) — \(site)"
