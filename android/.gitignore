@@ -1,0 +1,14 @@
+/.sdk/
+/.gradle/
+/build/
+/local.properties
+**/.cxx/
+**/build/
+**/captures/
+*.apk
+*.aab
+*.iml
+.idea/
+.DS_Store
+engine/target/
+app/src/main/jniLibs/

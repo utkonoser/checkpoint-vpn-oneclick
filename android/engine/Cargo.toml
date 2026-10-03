@@ -1,0 +1,33 @@
+[package]
+name = "checkpoint-engine"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "JNI bridge for Checkpoint VPN One-Click on Android (snxcore)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+name = "checkpoint_engine"
+
+[features]
+default = []
+snxcore = ["dep:snxcore", "dep:tokio", "dep:secrecy", "dep:tracing", "dep:tracing-subscriber", "dep:ipnet", "dep:anyhow"]
+
+[dependencies]
+jni = "0.21"
+once_cell = { version = "1", features = ["std"] }
+parking_lot = "0.12"
+
+snxcore = { path = "../../Vendor/snx-rs/crates/snxcore", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+secrecy = { version = "0.10", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["fmt"], optional = true }
+ipnet = { version = "2", optional = true }
+anyhow = { version = "1", optional = true }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

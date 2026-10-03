@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Checkpoint VPN One-Click</string>
+    <string name="tile_label">Checkpoint VPN</string>
+    <string name="vpn_notification_channel">VPN tunnel</string>
+    <string name="vpn_notification_title">Checkpoint VPN</string>
+    <string name="vpn_notification_connecting">Connecting…</string>
+    <string name="vpn_notification_connected">Connected</string>
+    <string name="vpn_notification_disconnected">Disconnected</string>
+</resources>
