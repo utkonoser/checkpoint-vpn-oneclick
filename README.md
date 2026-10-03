@@ -1,10 +1,17 @@
 # Checkpoint VPN One-Click
 
-Menu bar app for **Check Point** remote access on macOS. It ships its own tunnel helper (vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork) and connects with a saved password + live TOTP — no official Check Point UI, no separate `SNX-RS.pkg`.
+Clients for **Check Point** remote access on **macOS** and **Android**. Both use a vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork (`snxcore`) and connect with a saved password + live TOTP — no official Check Point UI.
 
 **Split-tunnel by default** (`default-route=false`): the VPN does not take the whole internet. Optionally list **CIDRs / IPs / hostnames** so only those destinations go through the tunnel.
 
+| Platform | UI | Tunnel |
+|----------|----|--------|
+| macOS | Menu bar Swift app | Root helper + utun (`CheckpointVPNTunnel`) |
+| Android | Jetpack Compose | `VpnService` + `libcheckpoint_engine.so` (JNI → snxcore) |
+
 Not affiliated with Check Point.
+
+See [android/README.md](android/README.md) for Android build / sideload.
 
 ## Features
 
@@ -107,7 +114,18 @@ make generate  # xcodegen → .xcodeproj
 make dmg       # local DMG under build/
 ```
 
-GitHub release DMG: **Actions → Release DMG → Run workflow** (needs Rust on the runner; embeds the helper).
+GitHub release (DMG + APK): push a tag, then **Actions → Release → Run workflow** with that tag. Builds macOS DMG and Android APK and attaches both to the release.
+
+### Android APK (local)
+
+```bash
+make apk
+# → build/CheckpointVPNOneClick.apk
+```
+
+Needs JDK 17+, Android SDK/NDK, Rust + `cargo-ndk` (Gradle `preBuild` compiles `libcheckpoint_engine.so`).
+
+PR CI for Android only: **Actions → Android** (`.github/workflows/android.yml`).
 
 ### After sleep / helper issues
 

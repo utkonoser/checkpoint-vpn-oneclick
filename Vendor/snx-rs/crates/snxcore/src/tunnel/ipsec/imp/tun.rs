@@ -140,6 +140,35 @@ impl TunIPsecTunnel {
             .await;
     }
 
+    fn split_routes_for_session(&self, session: &IPsecSession) -> anyhow::Result<Vec<Ipv4Net>> {
+        if self.params.no_routing {
+            return Ok(self.params.add_routes.clone());
+        }
+        let mut routes = Vec::with_capacity(self.subnets.len() + self.params.add_routes.len() + 1);
+        routes.extend(&self.params.add_routes);
+        routes.extend(&self.subnets);
+        routes.retain(|r| !self.params.ignore_routes.contains(r));
+        let network = Ipv4Net::with_netmask(session.address, session.netmask)?;
+        if network.prefix_len() < 32 {
+            routes.push(network.trunc());
+        }
+        Ok(routes)
+    }
+
+    #[cfg(target_os = "android")]
+    fn android_vpn_routes(&self, session: &IPsecSession) -> anyhow::Result<Vec<Ipv4Net>> {
+        if self.params.default_route && !self.params.no_routing {
+            // Full tunnel: still avoid installing 0.0.0.0/0 here without a bypass for the gateway.
+            // Prefer Office Mode / configured routes so ESP/DNS to the gateway stay on the physical link.
+            let mut routes = self.split_routes_for_session(session)?;
+            if routes.is_empty() {
+                routes.push(Ipv4Net::with_netmask(session.address, session.netmask)?.trunc());
+            }
+            return Ok(routes);
+        }
+        self.split_routes_for_session(session)
+    }
+
     pub async fn setup_routing(&mut self, dev_name: &str, session: &IPsecSession) -> anyhow::Result<()> {
         let configurator = Platform::get()
             .new_routing_configurator(dev_name, TunnelType::IPsec)
@@ -156,17 +185,9 @@ impl TunIPsecTunnel {
                 disable_ipv6: self.params.disable_ipv6,
             }
         } else {
-            let mut routes = Vec::with_capacity(self.subnets.len() + self.params.add_routes.len());
-            routes.extend(&self.params.add_routes);
-            routes.extend(&self.subnets);
-            routes.retain(|r| !self.params.ignore_routes.contains(r));
-            let network = Ipv4Net::with_netmask(session.address, session.netmask)?;
-            if network.prefix_len() < 32 {
-                routes.push(network.trunc());
-            }
             RoutingConfig::Split {
                 destination: self.gateway_address,
-                routes,
+                routes: self.split_routes_for_session(session)?,
             }
         };
 
@@ -215,15 +236,23 @@ impl TunIPsecTunnel {
             .with_context(|| tr!("error-no-ipsec-session"))?
             .clone();
 
-        let tun = TunDevice::new(name_hint)?;
-        let tun_name = tun.name().to_owned();
-
         let device_config = DeviceConfig {
-            name: tun_name.clone(),
+            name: name_hint.to_owned(),
             mtu: self.params.mtu,
             address: session.ipv4net_address(),
             allow_forwarding: self.params.allow_forwarding,
         };
+
+        // Android: establish VpnService only now (after auth/IKE). Opening TUN earlier steals
+        // DNS and breaks https://gateway/... lookups with "No address associated with hostname".
+        #[cfg(target_os = "android")]
+        {
+            let routes = self.android_vpn_routes(&session)?;
+            crate::platform::android::establish_vpn_service(&device_config, &session.dns, &routes)?;
+        }
+
+        let tun = TunDevice::new(name_hint)?;
+        let tun_name = tun.name().to_owned();
 
         Platform::get()
             .new_network_interface()

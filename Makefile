@@ -1,4 +1,4 @@
-.PHONY: generate build test install dmg clean forget-extra-apps helper
+.PHONY: generate build test install dmg apk clean forget-extra-apps helper
 
 XCODEBUILD = xcodebuild \
 	-project CheckpointVPNOneClick.xcodeproj \
@@ -33,6 +33,10 @@ install: helper
 dmg: generate helper
 	./Scripts/package-dmg.sh
 
+# Android release APK → build/CheckpointVPNOneClick.apk
+apk:
+	./Scripts/build-android-apk.sh
+
 clean:
 	rm -rf build TunnelHelper/dist
-	rm -rf Vendor/snx-rs/target
+	rm -rf Vendor/snx-rs/target android/app/build android/engine/target
