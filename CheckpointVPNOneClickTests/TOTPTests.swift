@@ -118,4 +118,22 @@ final class TOTPTests: XCTestCase {
             "api2.cursor.sh",
         ])
     }
+
+    func testParseProxySubscriptionHysteria2() throws {
+        let text = """
+        # comment
+        hysteria2://408c51e8-9246-483d-ba73-34ab4e202eb9@example.com:20326?security=tls&sni=example.com&insecure=0#%F0%9F%87%A9%F0%9F%87%AA%20Germany
+        """
+        let parsed = ProxySubscription.parse(text)
+        XCTAssertEqual(parsed.nodes.count, 1)
+        XCTAssertEqual(parsed.nodes[0].server, "example.com")
+        XCTAssertEqual(parsed.nodes[0].proto, "hysteria2")
+        let data = try ProxySubscription.buildConfig(parsed: parsed, selectedTag: ProxySubscription.autoTag)
+        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let outbounds = root?["outbounds"] as? [[String: Any]] ?? []
+        let tags = outbounds.compactMap { $0["tag"] as? String }
+        XCTAssertTrue(tags.contains(ProxySubscription.autoTag))
+        XCTAssertTrue(tags.contains(ProxySubscription.selectorTag))
+        XCTAssertTrue(tags.contains("direct"))
+    }
 }

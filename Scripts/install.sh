@@ -114,6 +114,12 @@ if [[ ! -x "$ROOT/TunnelHelper/dist/CheckpointVPNTunnel" ]]; then
 fi
 "$ROOT/Scripts/bundle-tunnel-helper.sh" "$APP"
 
+# Embed sing-box personal proxy helper.
+if [[ ! -x "$ROOT/ProxyHelper/dist/sing-box" ]]; then
+  "$ROOT/Scripts/build-sing-box.sh"
+fi
+"$ROOT/Scripts/bundle-proxy-helper.sh" "$APP"
+
 # Re-sign after adding Resources (signature covers the whole bundle).
 if [[ -n "$IDENTITY" ]]; then
   codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" \

@@ -16,3 +16,10 @@
 - Obligation: distributing the helper / APK native library requires offering the corresponding (modified) source; that source is this repository’s `Vendor/snx-rs` tree, `android/engine`, and packaging scripts under `Scripts/` / `TunnelHelper/`.
 
 The macOS Swift UI and Android Compose UI are separate processes that control the AGPL-covered tunnel engine (Unix socket on macOS; in-process JNI on Android).
+
+## sing-box (personal proxy helper)
+
+- Project: [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
+- License: **GNU General Public License v3.0** (GPL-3.0)
+- Use in this app: bundled binary under `ProxyHelper/` / `/Library/Application Support/CheckpointVPNProxy/` for optional dual-VPN include-only routing on macOS.
+- Build: `Scripts/build-sing-box.sh` downloads the official darwin release (override with `SING_BOX_VERSION=`).

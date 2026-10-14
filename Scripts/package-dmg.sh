@@ -39,6 +39,10 @@ if [[ ! -x "$ROOT/TunnelHelper/dist/CheckpointVPNTunnel" ]]; then
   "$ROOT/Scripts/build-tunnel-helper.sh"
 fi
 "$ROOT/Scripts/bundle-tunnel-helper.sh" "$APP"
+if [[ ! -x "$ROOT/ProxyHelper/dist/sing-box" ]]; then
+  "$ROOT/Scripts/build-sing-box.sh"
+fi
+"$ROOT/Scripts/bundle-proxy-helper.sh" "$APP"
 
 codesign --force --sign - \
   --identifier "local.checkpointvpn.oneclick" \

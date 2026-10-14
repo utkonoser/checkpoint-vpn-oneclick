@@ -17,4 +17,5 @@ CheckpointVPNOneClick.xcodeproj/xcuserdata/
 CheckpointVPNOneClick.xcodeproj/project.xcworkspace/xcuserdata/
 # Tunnel helper build outputs (Scripts/build-tunnel-helper.sh)
 TunnelHelper/dist/
+ProxyHelper/dist/
 Vendor/snx-rs/target/

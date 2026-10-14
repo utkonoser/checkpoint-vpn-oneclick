@@ -1,4 +1,4 @@
-.PHONY: generate build test install dmg apk clean forget-extra-apps helper
+.PHONY: generate build test install dmg apk clean forget-extra-apps helper proxy
 
 XCODEBUILD = xcodebuild \
 	-project CheckpointVPNOneClick.xcodeproj \
@@ -15,6 +15,9 @@ generate:
 helper:
 	./Scripts/build-tunnel-helper.sh
 
+proxy:
+	./Scripts/build-sing-box.sh
+
 build: generate
 	mkdir -p build && touch build/.metadata_never_index
 	$(XCODEBUILD) build
@@ -27,10 +30,10 @@ test: generate
 forget-extra-apps:
 	./Scripts/remove-extra-apps.sh
 
-install: helper
+install: helper proxy
 	./Scripts/install.sh
 
-dmg: generate helper
+dmg: generate helper proxy
 	./Scripts/package-dmg.sh
 
 # Android release APK → build/CheckpointVPNOneClick.apk
@@ -38,5 +41,5 @@ apk:
 	./Scripts/build-android-apk.sh
 
 clean:
-	rm -rf build TunnelHelper/dist
+	rm -rf build TunnelHelper/dist ProxyHelper/dist
 	rm -rf Vendor/snx-rs/target android/app/build android/engine/target

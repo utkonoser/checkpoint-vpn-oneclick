@@ -19,6 +19,8 @@ See [android/README.md](android/README.md) for Android build / sideload.
 - **Embedded helper**: first Connect installs LaunchDaemon `local.checkpointvpn.tunnel` (admin once); **Repair helper…** in Settings if needed
 - **Multiple gateways**: type a hostname, save with **+**, switch via recent menu, remove with **−**
 - **Split tunnel**: optional CIDR / IP / hostname list → `no-routing` + `add-routes` (hostnames resolve at Connect)
+- **Exclude**: destinations kept off the work tunnel (`ignore-routes`)
+- **Personal proxy (macOS)**: optional embedded sing-box beside Check Point — subscription URL, include-only routes, Auto/manual node picker
 - **Gateway routes** when the list is empty (Office Mode from the gateway, still no default route)
 - **Per-site secrets**: password + TOTP (Base32, `otpauth://`, or QR)
 - **Live TOTP** in Settings

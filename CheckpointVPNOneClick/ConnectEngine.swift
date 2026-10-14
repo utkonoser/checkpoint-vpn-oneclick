@@ -7,6 +7,7 @@ enum ConnectEngine {
         case missingUsername
         case missingSite
         case alreadyConnected
+        case proxyAlreadyRunning
         case connectFailed(String)
 
         var errorDescription: String? {
@@ -15,19 +16,23 @@ enum ConnectEngine {
             case .missingTOTP: return "Save the TOTP secret for this site in Settings first."
             case .missingUsername: return "Username is empty."
             case .missingSite: return "No VPN site selected."
-            case .alreadyConnected: return "Already connected."
+            case .alreadyConnected: return "Work VPN is already connected."
+            case .proxyAlreadyRunning: return "Personal proxy is already running."
             case .connectFailed(let message): return message
             }
         }
     }
 
-    static func connect(
+    // MARK: - Work VPN (Check Point)
+
+    static func connectWork(
         site: String,
         username: String,
         loginType: String,
         ignoreServerCert: Bool = true,
         splitDestinations: String = "",
-        excludeDestinations: String = ""
+        excludeDestinations: String = "",
+        extraIgnoreHosts: [String] = []
     ) async throws {
         let site = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -39,14 +44,18 @@ enum ConnectEngine {
         guard let totpRaw = try KeychainStore.totpSecret(site: site), !totpRaw.isEmpty else { throw Error.missingTOTP }
         let secret = try TOTP.parseSecret(totpRaw)
 
-        // Resolve hostnames off the main actor before writing the connect conf.
-        let ignoreRoutes = SplitDestinations.resolveIgnoreRoutes(excludeDestinations)
+        var ignoreRoutes = SplitDestinations.resolveIgnoreRoutes(excludeDestinations)
+        if !extraIgnoreHosts.isEmpty {
+            let more = SplitDestinations.resolveIgnoreRoutes(extraIgnoreHosts.joined(separator: "\n"))
+            var seen = Set(ignoreRoutes)
+            for cidr in more where seen.insert(cidr).inserted {
+                ignoreRoutes.append(cidr)
+            }
+        }
         let ignoreSet = Set(ignoreRoutes)
-        // Filter exclude out of include: snx-rs skips ignore-routes when no-routing=true.
         let addRoutes = try SplitDestinations.resolveAddRoutes(splitDestinations)
             .filter { !ignoreSet.contains($0) }
 
-        // After sleep/wake the tunnel daemon often keeps a half-dead session. Always start clean.
         try? SnxClient.disconnect()
         try await Task.sleep(nanoseconds: 400_000_000)
 
@@ -85,8 +94,6 @@ enum ConnectEngine {
                     || message.localizedCaseInsensitiveContains("timeout")
                     || message.localizedCaseInsensitiveContains("unsuccessful")
                 guard attempt == 1, retryable else { break }
-                // Gateway flakiness: clean session and retry.
-                // Half-dead helper (Internal IPSec cert) or dead IPC still needs admin kickstart.
                 try? SnxClient.disconnect()
                 let needsDaemonRestart =
                     message.localizedCaseInsensitiveContains("Internal IPSec certificate")
@@ -109,11 +116,47 @@ enum ConnectEngine {
                 try await Task.sleep(nanoseconds: 800_000_000)
             }
         }
-        throw lastError ?? Error.connectFailed("Connect failed")
+        throw lastError ?? Error.connectFailed("Work VPN connect failed")
     }
 
-    static func disconnect() throws {
+    static func disconnectWork() throws {
         try SnxClient.disconnect()
+    }
+
+    // MARK: - Personal proxy (sing-box)
+
+    static func connectProxy(
+        subscriptionURL: String,
+        includeDestinations: String,
+        nodeTag: String
+    ) async throws -> String {
+        if ProxyClient.isRunning() {
+            throw Error.proxyAlreadyRunning
+        }
+        let text = try ProxySubscription.fetch(urlString: subscriptionURL)
+        let parsed = ProxySubscription.parse(text)
+        guard !parsed.nodes.isEmpty else { throw ProxySubscription.Error.empty }
+        var selected = nodeTag
+        if selected != ProxySubscription.autoTag,
+           !parsed.nodes.contains(where: { $0.tag == selected }) {
+            selected = ProxySubscription.autoTag
+        }
+        let configURL = try ProxySubscription.save(parsed: parsed, selectedTag: selected)
+        let includeCIDRs = SplitDestinations.resolveIgnoreRoutes(includeDestinations)
+        try ProxyClient.start(configURL: configURL, includeCIDRs: includeCIDRs)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try? ProxyClient.selectNode(tag: selected)
+        return selected
+    }
+
+    static func disconnectProxy() throws {
+        try ProxyClient.stop()
+    }
+
+    /// Disconnect every tunnel we manage.
+    static func disconnectAll() throws {
+        try? ProxyClient.stop()
+        try? SnxClient.disconnect()
     }
 
     private static func waitUntilConnected() async throws {

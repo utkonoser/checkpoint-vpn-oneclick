@@ -19,7 +19,7 @@ struct CheckpointVPNOneClickApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(width: 500, height: 720)
+                .frame(width: 500, height: 780)
                 .onAppear { AppWindows.bringSettingsForward() }
         }
     }
@@ -79,12 +79,28 @@ struct MenuContent: View {
 
     var body: some View {
         Group {
-            Text(statusLine)
+            Text(model.isBusy ? "Working…" : overviewLine)
+                .lineLimit(2)
 
             if let error = model.lastError, !error.isEmpty {
                 Text(error)
                     .foregroundStyle(.red)
                     .lineLimit(2)
+            }
+
+            Divider()
+
+            Text("Active VPNs")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if model.activeTunnels.isEmpty {
+                Text("None")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.activeTunnels) { tunnel in
+                    Text("• \(tunnel.title): \(tunnel.detail)")
+                        .lineLimit(2)
+                }
             }
 
             Divider()
@@ -106,12 +122,25 @@ struct MenuContent: View {
                 .disabled(model.isBusy || model.vpnState == .connected)
             }
 
-            if model.vpnState == .connected || (model.isBusy && model.canDisconnect) {
-                Button("Disconnect") { model.disconnect() }
-                    .disabled(!model.canDisconnect)
+            if model.vpnState == .connected {
+                Button("Disconnect \(model.displayWorkName)") { model.disconnectWork() }
+                    .disabled(!model.canDisconnectWork)
             } else {
-                Button("Connect") { model.connect() }
-                    .disabled(!model.canConnect)
+                Button("Connect \(model.displayWorkName)") { model.connectWork() }
+                    .disabled(!model.canConnectWork)
+            }
+
+            if model.proxyRunning {
+                Button("Disconnect \(model.displayProxyName)") { model.disconnectProxy() }
+                    .disabled(!model.canDisconnectProxy)
+            } else {
+                Button("Connect \(model.displayProxyName)") { model.connectProxy() }
+                    .disabled(!model.canConnectProxy)
+            }
+
+            if model.activeTunnels.count > 1 {
+                Button("Disconnect All") { model.disconnectAll() }
+                    .disabled(model.isBusy)
             }
 
             Divider()
@@ -131,16 +160,15 @@ struct MenuContent: View {
         }
     }
 
-    private var statusLine: String {
-        if model.isBusy {
+    private var overviewLine: String {
+        let n = model.activeTunnels.count
+        if n == 0 {
             let site = model.site.isEmpty ? "…" : model.site
-            return "Working… \(site)"
+            return "Idle — \(site)"
         }
-        if model.vpnState == .connected {
-            let site = model.snxStatus.serverName ?? model.site
-            return "Connected — \(site)"
+        if n == 1, let only = model.activeTunnels.first {
+            return "\(only.title) — \(only.detail)"
         }
-        let site = model.site.isEmpty ? "…" : model.site
-        return "\(model.vpnState.title) — \(site)"
+        return "\(n) VPNs active"
     }
 }

@@ -14,6 +14,21 @@ final class AppModel: ObservableObject {
     @AppStorage("workDomains") var splitDestinations: String = ""
     /// One CIDR/IP/hostname per line — stay off the tunnel (`ignore-routes` / filtered from add-routes).
     @AppStorage("excludeDestinations") var excludeDestinations: String = ""
+    @AppStorage("workConnectionName") var workConnectionName: String = "Check Point"
+    @AppStorage("proxyConnectionName") var proxyConnectionName: String = "Personal proxy"
+    @AppStorage("proxySubscriptionURL") var proxySubscriptionURL: String = ProxySubscription.defaultURL
+    @AppStorage("proxyInclude") var proxyInclude: String = ""
+    @AppStorage("proxyNodeTag") var proxyNodeTag: String = ProxySubscription.autoTag
+
+    var displayWorkName: String {
+        let n = workConnectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Check Point" : n
+    }
+
+    var displayProxyName: String {
+        let n = proxyConnectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Personal proxy" : n
+    }
 
     @Published var snxStatus = SnxStatus.disconnected
     @Published var lastError: String?
@@ -21,6 +36,10 @@ final class AppModel: ObservableObject {
     @Published var hasPassword = false
     @Published var hasTOTP = false
     @Published var snxInstalled = false
+    @Published var proxyNodes: [ProxySubscription.Node] = []
+    @Published var proxyRunning = false
+    @Published var proxyNow: String?
+    @Published var proxyDelayMs: Int?
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -58,6 +77,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        proxyNodes = ProxySubscription.loadCachedNodes()
         refreshStatus()
         refreshSecrets()
         let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -173,7 +193,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var canConnect: Bool {
+    var canConnectWork: Bool {
         !isBusy
             && snxInstalled
             && hasPassword
@@ -183,16 +203,46 @@ final class AppModel: ObservableObject {
             && vpnState != .connected
     }
 
-    var canDisconnect: Bool {
-        !isBusy && snxInstalled
+    var canDisconnectWork: Bool {
+        !isBusy && snxInstalled && vpnState == .connected
     }
 
+    var canConnectProxy: Bool {
+        !isBusy && ProxyClient.bundledPayloadURL() != nil && !proxyRunning
+    }
+
+    var canDisconnectProxy: Bool {
+        !isBusy && proxyRunning
+    }
+
+    /// Any tunnel up — for menu bar icon.
     var menuBarConnected: Bool {
-        vpnState == .connected
+        vpnState == .connected || proxyRunning
     }
 
     var menuBarImageName: String {
         menuBarConnected ? "MenuBarConnected" : "MenuBarDisconnected"
+    }
+
+    struct ActiveTunnel: Identifiable, Equatable {
+        var id: String
+        var title: String
+        var detail: String
+    }
+
+    var activeTunnels: [ActiveTunnel] {
+        var list: [ActiveTunnel] = []
+        if vpnState == .connected {
+            let name = snxStatus.serverName ?? site
+            let ip = snxStatus.ipAddress.map { " · \($0)" } ?? ""
+            list.append(ActiveTunnel(id: "work", title: displayWorkName, detail: "\(name)\(ip)"))
+        }
+        if proxyRunning {
+            let now = proxyNow ?? proxyNodeTag
+            let latency = proxyDelayMs.map { " · \($0) ms" } ?? ""
+            list.append(ActiveTunnel(id: "proxy", title: displayProxyName, detail: "\(now)\(latency)"))
+        }
+        return list
     }
 
     func selectSite(_ name: String) {
@@ -268,7 +318,12 @@ final class AppModel: ObservableObject {
             } else {
                 snx = .success(.disconnected)
             }
+            let running = ProxyClient.isRunning()
+            let proxyInfo = running ? ProxyClient.proxyStatus() : (nil, nil)
             await MainActor.run {
+                self.proxyRunning = running
+                self.proxyNow = proxyInfo.0
+                self.proxyDelayMs = proxyInfo.1
                 switch snx {
                 case .success(let new):
                     if new != self.snxStatus {
@@ -299,8 +354,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func connect() {
-        guard canConnect else { return }
+    func connectWork() {
+        guard canConnectWork else { return }
         isBusy = true
         lastError = nil
         let site = self.site
@@ -309,16 +364,19 @@ final class AppModel: ObservableObject {
         let ignoreCert = self.snxIgnoreServerCert
         let destinations = self.splitDestinations
         let excludes = self.excludeDestinations
+        // If proxy nodes are known (running or cached), keep their egress off the work tunnel.
+        let extraHosts = ProxySubscription.serverHosts(in: proxyNodes)
         rememberSite(site)
         Task {
             do {
-                try await ConnectEngine.connect(
+                try await ConnectEngine.connectWork(
                     site: site,
                     username: username,
                     loginType: loginType,
                     ignoreServerCert: ignoreCert,
                     splitDestinations: destinations,
-                    excludeDestinations: excludes
+                    excludeDestinations: excludes,
+                    extraIgnoreHosts: extraHosts
                 )
                 refreshStatus()
             } catch {
@@ -329,13 +387,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func disconnect() {
-        guard !isBusy, snxInstalled else { return }
+    func disconnectWork() {
+        guard canDisconnectWork else { return }
         isBusy = true
         lastError = nil
         Task.detached {
             do {
-                try ConnectEngine.disconnect()
+                try ConnectEngine.disconnectWork()
                 await MainActor.run {
                     self.snxStatus = .disconnected
                     self.refreshStatus()
@@ -348,6 +406,106 @@ final class AppModel: ObservableObject {
                     self.isBusy = false
                 }
             }
+        }
+    }
+
+    func connectProxy() {
+        guard canConnectProxy else { return }
+        isBusy = true
+        lastError = nil
+        let url = proxySubscriptionURL
+        let include = proxyInclude
+        let tag = proxyNodeTag
+        Task {
+            do {
+                let selected = try await ConnectEngine.connectProxy(
+                    subscriptionURL: url,
+                    includeDestinations: include,
+                    nodeTag: tag
+                )
+                proxyNodes = ProxySubscription.loadCachedNodes()
+                proxyNodeTag = selected
+                refreshStatus()
+            } catch {
+                lastError = error.localizedDescription
+                refreshStatus()
+            }
+            isBusy = false
+        }
+    }
+
+    func disconnectProxy() {
+        guard canDisconnectProxy else { return }
+        isBusy = true
+        lastError = nil
+        Task.detached {
+            do {
+                try ConnectEngine.disconnectProxy()
+                await MainActor.run {
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                    self.refreshStatus()
+                    self.isBusy = false
+                }
+            }
+        }
+    }
+
+    func disconnectAll() {
+        guard !isBusy else { return }
+        isBusy = true
+        lastError = nil
+        Task.detached {
+            try? ConnectEngine.disconnectAll()
+            await MainActor.run {
+                self.snxStatus = .disconnected
+                self.refreshStatus()
+                self.isBusy = false
+            }
+        }
+    }
+
+    func refreshProxySubscription() {
+        guard !isBusy else { return }
+        isBusy = true
+        lastError = nil
+        let url = proxySubscriptionURL
+        let tag = proxyNodeTag
+        Task.detached {
+            do {
+                let text = try ProxySubscription.fetch(urlString: url)
+                let parsed = ProxySubscription.parse(text)
+                guard !parsed.nodes.isEmpty else { throw ProxySubscription.Error.empty }
+                var selected = tag
+                if selected != ProxySubscription.autoTag,
+                   !parsed.nodes.contains(where: { $0.tag == selected }) {
+                    selected = ProxySubscription.autoTag
+                }
+                _ = try ProxySubscription.save(parsed: parsed, selectedTag: selected)
+                await MainActor.run {
+                    self.proxyNodes = parsed.nodes
+                    self.proxyNodeTag = selected
+                    self.isBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                    self.isBusy = false
+                }
+            }
+        }
+    }
+
+    func applyProxyNodeSelection() {
+        let tag = proxyNodeTag
+        guard proxyRunning else { return }
+        Task.detached {
+            try? ProxyClient.selectNode(tag: tag)
+            await MainActor.run { self.refreshStatus() }
         }
     }
 
