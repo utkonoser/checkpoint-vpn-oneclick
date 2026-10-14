@@ -94,16 +94,35 @@ tasks.register<Exec>("buildNativeEngine") {
         ?: System.getenv("ANDROID_SDK_ROOT")
         ?: rootProject.file(".sdk").absolutePath
     val ndkVersion = "27.2.12479018"
+    // Device default: arm64 only. Set ANDROID_NATIVE_ABIS=arm64-v8a,x86_64 for emulator too.
+    val abis = (System.getenv("ANDROID_NATIVE_ABIS") ?: "arm64-v8a")
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
     environment("ANDROID_HOME", sdkDir)
     environment("ANDROID_SDK_ROOT", sdkDir)
     environment("ANDROID_NDK_HOME", "$sdkDir/ndk/$ndkVersion")
-    commandLine(
-        "cargo", "ndk",
-        "-t", "arm64-v8a",
-        "-t", "x86_64",
+    val cmd = mutableListOf("cargo", "ndk")
+    abis.forEach { abi ->
+        cmd += listOf("-t", abi)
+    }
+    cmd += listOf(
         "-o", "../app/src/main/jniLibs",
         "build", "--release",
         "--features", "snxcore",
+    )
+    commandLine(cmd)
+    // Skip cargo when .so is newer than engine/snxcore sources (make apk feels fast again).
+    inputs.files(
+        fileTree(rootProject.file("engine")) {
+            include("Cargo.toml", "Cargo.lock", "src/**/*.rs")
+        },
+        fileTree(rootProject.file("../Vendor/snx-rs/crates/snxcore")) {
+            include("Cargo.toml", "src/**/*.rs")
+        },
+    )
+    outputs.files(
+        abis.map { rootProject.file("app/src/main/jniLibs/$it/libcheckpoint_engine.so") },
     )
     onlyIf { cargoNdkAvailable() && file("$sdkDir/ndk/$ndkVersion").exists() }
 }
