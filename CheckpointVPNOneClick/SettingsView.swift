@@ -307,6 +307,12 @@ struct SettingsView: View {
                 .frame(minHeight: 56, maxHeight: 100)
         }
 
+        stacked("Exclude from this VPN") {
+            TextEditor(text: $model.proxyExclude)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 48, maxHeight: 88)
+        }
+
         stacked("Node") {
             Picker("Node", selection: $model.proxyNodeTag) {
                 Text("Auto (urltest)").tag(ProxySubscription.autoTag)
@@ -342,6 +348,7 @@ struct SettingsView: View {
             if model.proxyRunning { model.disconnectProxy() }
             model.proxySubscriptionURL = ""
             model.proxyInclude = ""
+            model.proxyExclude = ""
             proxyConfigured = false
             proxyExpanded = false
         }

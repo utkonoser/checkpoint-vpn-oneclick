@@ -18,6 +18,8 @@ final class AppModel: ObservableObject {
     @AppStorage("proxyConnectionName") var proxyConnectionName: String = "Personal proxy"
     @AppStorage("proxySubscriptionURL") var proxySubscriptionURL: String = ProxySubscription.defaultURL
     @AppStorage("proxyInclude") var proxyInclude: String = ""
+    /// One CIDR/IP/hostname per line — stay off the personal proxy even if listed in include.
+    @AppStorage("proxyExclude") var proxyExclude: String = ""
     @AppStorage("proxyNodeTag") var proxyNodeTag: String = ProxySubscription.autoTag
 
     var displayWorkName: String {
@@ -436,12 +438,14 @@ final class AppModel: ObservableObject {
         lastError = nil
         let url = proxySubscriptionURL
         let include = proxyInclude
+        let exclude = proxyExclude
         let tag = proxyNodeTag
         Task {
             do {
                 let selected = try await ConnectEngine.connectProxy(
                     subscriptionURL: url,
                     includeDestinations: include,
+                    excludeDestinations: exclude,
                     nodeTag: tag
                 )
                 proxyNodes = ProxySubscription.loadCachedNodes()

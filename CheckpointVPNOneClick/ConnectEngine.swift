@@ -128,6 +128,7 @@ enum ConnectEngine {
     static func connectProxy(
         subscriptionURL: String,
         includeDestinations: String,
+        excludeDestinations: String = "",
         nodeTag: String
     ) async throws -> String {
         if ProxyClient.isRunning() {
@@ -142,7 +143,9 @@ enum ConnectEngine {
             selected = ProxySubscription.autoTag
         }
         let configURL = try ProxySubscription.save(parsed: parsed, selectedTag: selected)
+        let excludeCIDRs = Set(SplitDestinations.resolveIgnoreRoutes(excludeDestinations))
         let includeCIDRs = SplitDestinations.resolveIgnoreRoutes(includeDestinations)
+            .filter { !excludeCIDRs.contains($0) }
         try ProxyClient.start(configURL: configURL, includeCIDRs: includeCIDRs)
         try await Task.sleep(nanoseconds: 500_000_000)
         try? ProxyClient.selectNode(tag: selected)
