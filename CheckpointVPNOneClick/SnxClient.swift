@@ -120,7 +120,8 @@ enum SnxClient {
         password: String,
         mfaCode: String,
         ignoreServerCert: Bool = true,
-        addRoutes: [String] = []
+        addRoutes: [String] = [],
+        ignoreRoutes: [String] = []
     ) throws {
         if !isHelperInstalled() {
             try installHelper()
@@ -133,7 +134,8 @@ enum SnxClient {
             password: password,
             mfaCode: mfaCode,
             ignoreServerCert: ignoreServerCert,
-            addRoutes: addRoutes
+            addRoutes: addRoutes,
+            ignoreRoutes: ignoreRoutes
         )
         defer { try? FileManager.default.removeItem(at: configURL) }
 
@@ -372,7 +374,8 @@ enum SnxClient {
         password: String,
         mfaCode: String,
         ignoreServerCert: Bool = true,
-        addRoutes: [String] = []
+        addRoutes: [String] = [],
+        ignoreRoutes: [String] = []
     ) throws -> URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/CheckpointVPNOneClick", isDirectory: true)
@@ -401,6 +404,9 @@ enum SnxClient {
         if !addRoutes.isEmpty {
             lines.append("no-routing=true")
             lines.append("add-routes=\(addRoutes.joined(separator: ","))")
+        }
+        if !ignoreRoutes.isEmpty {
+            lines.append("ignore-routes=\(ignoreRoutes.joined(separator: ","))")
         }
         let body = lines.joined(separator: "\n") + "\n"
         try body.write(to: url, atomically: true, encoding: .utf8)

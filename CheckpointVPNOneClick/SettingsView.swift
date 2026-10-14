@@ -111,6 +111,18 @@ struct SettingsView: View {
             }
 
             Section {
+                stacked("CIDRs, IPs, hostnames") {
+                    TextEditor(text: $model.excludeDestinations)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 72, maxHeight: 120)
+                }
+            } header: {
+                Text("Exclude from VPN")
+            } footer: {
+                Text("These stay off the tunnel. Leading *. is stripped; wildcards are not expanded.")
+            }
+
+            Section {
                 HStack {
                     Text(model.isBusy ? "Working…" : model.vpnState.title)
                         .font(.body.weight(.medium))

@@ -26,7 +26,8 @@ enum ConnectEngine {
         username: String,
         loginType: String,
         ignoreServerCert: Bool = true,
-        splitDestinations: String = ""
+        splitDestinations: String = "",
+        excludeDestinations: String = ""
     ) async throws {
         let site = site.trimmingCharacters(in: .whitespacesAndNewlines)
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -39,7 +40,11 @@ enum ConnectEngine {
         let secret = try TOTP.parseSecret(totpRaw)
 
         // Resolve hostnames off the main actor before writing the connect conf.
+        let ignoreRoutes = SplitDestinations.resolveIgnoreRoutes(excludeDestinations)
+        let ignoreSet = Set(ignoreRoutes)
+        // Filter exclude out of include: snx-rs skips ignore-routes when no-routing=true.
         let addRoutes = try SplitDestinations.resolveAddRoutes(splitDestinations)
+            .filter { !ignoreSet.contains($0) }
 
         // After sleep/wake the tunnel daemon often keeps a half-dead session. Always start clean.
         try? SnxClient.disconnect()
@@ -65,7 +70,8 @@ enum ConnectEngine {
                     password: password,
                     mfaCode: mfa,
                     ignoreServerCert: ignoreServerCert,
-                    addRoutes: addRoutes
+                    addRoutes: addRoutes,
+                    ignoreRoutes: ignoreRoutes
                 )
                 try await waitUntilConnected()
                 return

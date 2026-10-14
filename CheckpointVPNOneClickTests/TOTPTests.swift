@@ -102,4 +102,20 @@ final class TOTPTests: XCTestCase {
         XCTAssertEqual(parsed.cidrs, ["10.0.0.0/8", "192.168.1.1/32"])
         XCTAssertEqual(parsed.hosts, ["corp.example", "rutube.ru"])
     }
+
+    func testParseExcludeWildcardStrip() {
+        let parsed = SplitDestinations.parse("""
+        *.api5.cursor.sh
+        *.authentication.cursor.sh
+        api2.cursor.sh
+        10.1.2.3
+        # skip
+        """)
+        XCTAssertEqual(parsed.cidrs, ["10.1.2.3/32"])
+        XCTAssertEqual(parsed.hosts, [
+            "api5.cursor.sh",
+            "authentication.cursor.sh",
+            "api2.cursor.sh",
+        ])
+    }
 }

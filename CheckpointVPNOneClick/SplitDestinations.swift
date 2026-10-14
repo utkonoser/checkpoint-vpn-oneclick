@@ -11,7 +11,7 @@ enum SplitDestinations {
         var allLines: [String] { cidrs + hosts }
     }
 
-    /// One entry per line: `10.0.0.0/8`, `192.168.1.1`, or `corp.example`.
+    /// One entry per line: `10.0.0.0/8`, `192.168.1.1`, `corp.example`, or `*.api.example` (leading `*.` stripped).
     static func parse(_ raw: String) -> Parsed {
         var cidrs: [String] = []
         var hosts: [String] = []
@@ -20,7 +20,13 @@ enum SplitDestinations {
         for line in raw.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-            let entry = trimmed.hasPrefix(".") ? String(trimmed.dropFirst()) : trimmed
+            var entry = trimmed
+            if entry.hasPrefix("*.") {
+                entry = String(entry.dropFirst(2))
+            } else if entry.hasPrefix(".") {
+                entry = String(entry.dropFirst())
+            }
+            guard !entry.isEmpty else { continue }
             let key = entry.lowercased()
             guard seen.insert(key).inserted else { continue }
 
@@ -44,6 +50,26 @@ enum SplitDestinations {
                 if seen.insert(cidr).inserted {
                     routes.append(cidr)
                 }
+            }
+        }
+        return routes
+    }
+
+    /// Resolve exclude list for snx-rs `ignore-routes`. DNS failures are skipped (do not fail Connect).
+    static func resolveIgnoreRoutes(_ raw: String) -> [String] {
+        let parsed = parse(raw)
+        var routes = parsed.cidrs
+        var seen = Set(routes)
+        for host in parsed.hosts {
+            do {
+                for ip in try resolveIPv4(host) {
+                    let cidr = "\(ip)/32"
+                    if seen.insert(cidr).inserted {
+                        routes.append(cidr)
+                    }
+                }
+            } catch {
+                NSLog("exclude destination skipped (\(host)): \(error.localizedDescription)")
             }
         }
         return routes

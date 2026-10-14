@@ -12,6 +12,8 @@ final class AppModel: ObservableObject {
     @AppStorage("knownSites") private var knownSitesRaw: String = ""
     /// One CIDR/IP/hostname per line — when set, only these go through the tunnel (`add-routes`).
     @AppStorage("workDomains") var splitDestinations: String = ""
+    /// One CIDR/IP/hostname per line — stay off the tunnel (`ignore-routes` / filtered from add-routes).
+    @AppStorage("excludeDestinations") var excludeDestinations: String = ""
 
     @Published var snxStatus = SnxStatus.disconnected
     @Published var lastError: String?
@@ -306,6 +308,7 @@ final class AppModel: ObservableObject {
         let loginType = self.snxLoginType
         let ignoreCert = self.snxIgnoreServerCert
         let destinations = self.splitDestinations
+        let excludes = self.excludeDestinations
         rememberSite(site)
         Task {
             do {
@@ -314,7 +317,8 @@ final class AppModel: ObservableObject {
                     username: username,
                     loginType: loginType,
                     ignoreServerCert: ignoreCert,
-                    splitDestinations: destinations
+                    splitDestinations: destinations,
+                    excludeDestinations: excludes
                 )
                 refreshStatus()
             } catch {
