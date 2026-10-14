@@ -112,10 +112,11 @@ jobs:
           fi
           notes="macOS DMG (ad-hoc signed, macOS 14+) with embedded CheckpointVPNTunnel helper, plus Android sideload APK (VpnService + snxcore JNI).
 
-          - First macOS launch: right-click → Open. First Connect asks for admin once for the LaunchDaemon.
+          - First macOS launch: right-click → Open. Admin password only when a helper is missing or broken.
+          - Work VPN: split tunnel and exclude lists. Empty split list keeps gateway Office Mode.
+          - Personal proxy (macOS): independent sing-box subscription, include and exclude lists, node list sorted by ping.
           - Android: adb install the APK; grant VPN permission on first Connect.
-          - Split-tunnel work VPN; optional CIDR/hostname list.
-          - AGPL tunnel engine source: Vendor/snx-rs (+ android/engine for the JNI bridge)."
+          - AGPL tunnel engine source: Vendor/snx-rs (+ android/engine for the JNI bridge). sing-box is GPL-3 (see THIRD_PARTY.md)."
           gh release create "$tag" "${assets[@]}" \
             --title "Checkpoint VPN One-Click $tag" \
             --notes "$notes" \
