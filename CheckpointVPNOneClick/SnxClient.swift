@@ -223,13 +223,21 @@ enum SnxClient {
         }
     }
 
-    /// Restart the daemon when idle so a half-dead post-sleep process cannot break Connect.
+    /// Restart only when IPC is dead. A healthy idle daemon must not trigger admin prompts.
     @discardableResult
     static func refreshStaleDaemonIfNeeded() throws -> Bool {
-        if let status = try? status(), status.state == .connected {
+        do {
+            _ = try status()
+            return false
+        } catch Error.daemonUnavailable {
+            // Fall through — socket/process may be half-dead after sleep.
+        } catch {
+            // Daemon answered with a non-IPC error; do not admin-kickstart.
             return false
         }
-        guard isDaemonProcessRunning() || FileManager.default.fileExists(atPath: socketPath) else {
+
+        let looksPresent = isDaemonProcessRunning() || FileManager.default.fileExists(atPath: socketPath)
+        if !looksPresent {
             // No daemon yet — try installing from the bundle once.
             if !isHelperInstalled(), bundledHelperPayloadURL() != nil {
                 try installHelper()
@@ -237,6 +245,7 @@ enum SnxClient {
             }
             return false
         }
+
         try? disconnect()
         try restartDaemon()
         return true

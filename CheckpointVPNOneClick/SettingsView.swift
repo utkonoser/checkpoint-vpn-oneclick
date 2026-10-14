@@ -138,8 +138,22 @@ struct SettingsView: View {
                     Button("Disconnect") { model.disconnect() }
                         .disabled(!model.canDisconnect)
                     Spacer()
-                    Button("Repair helper…") { model.installHelperManually() }
-                        .disabled(model.isBusy || SnxClient.bundledHelperPayloadURL() == nil)
+                    Button("Repair helper…") {
+                        if SnxClient.isHelperInstalled() {
+                            model.restartDaemonManually()
+                        } else {
+                            model.installHelperManually()
+                        }
+                    }
+                    .disabled(
+                        model.isBusy
+                            || (SnxClient.bundledHelperPayloadURL() == nil && !SnxClient.isHelperInstalled())
+                    )
+                    .help(
+                        SnxClient.isHelperInstalled()
+                            ? "Restart the tunnel helper (admin password once)."
+                            : "Install the tunnel helper (admin password once)."
+                    )
                 }
             } header: {
                 Text("Session")

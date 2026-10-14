@@ -83,10 +83,6 @@ final class AppModel: ObservableObject {
                 self?.handleWake()
             }
         }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            self.restartStaleDaemonIfNeeded(reason: "launch")
-        }
     }
 
     private func handleWake() {

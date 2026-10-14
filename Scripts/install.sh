@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SUPPORT="$HOME/Library/Application Support/CheckpointVPNOneClick"
 KEYCHAIN="$SUPPORT/codesign.keychain-db"
-PASSWORD="checkpoint-vpn-local-codesign"
+PASSWORD="1234"
 CERT_CN="CheckpointVPNOneClick Local"
 INSTALL_DIR="$HOME/Applications"
 INSTALL="$INSTALL_DIR/CheckpointVPNOneClick.app"

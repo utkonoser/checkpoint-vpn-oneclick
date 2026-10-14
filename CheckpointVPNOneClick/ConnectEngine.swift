@@ -79,8 +79,27 @@ enum ConnectEngine {
                     || message.localizedCaseInsensitiveContains("timeout")
                     || message.localizedCaseInsensitiveContains("unsuccessful")
                 guard attempt == 1, retryable else { break }
-                NSLog("ConnectEngine retry with daemon restart after: \(message)")
-                _ = try? SnxClient.refreshStaleDaemonIfNeeded()
+                // Gateway flakiness: clean session and retry.
+                // Half-dead helper (Internal IPSec cert) or dead IPC still needs admin kickstart.
+                try? SnxClient.disconnect()
+                let needsDaemonRestart =
+                    message.localizedCaseInsensitiveContains("Internal IPSec certificate")
+                    || {
+                        do {
+                            _ = try SnxClient.status()
+                            return false
+                        } catch SnxClient.Error.daemonUnavailable {
+                            return true
+                        } catch {
+                            return false
+                        }
+                    }()
+                if needsDaemonRestart {
+                    NSLog("ConnectEngine retry with daemon restart after: \(message)")
+                    try SnxClient.restartDaemon()
+                } else {
+                    NSLog("ConnectEngine retry without daemon restart after: \(message)")
+                }
                 try await Task.sleep(nanoseconds: 800_000_000)
             }
         }
