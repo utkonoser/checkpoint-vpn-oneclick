@@ -37,9 +37,11 @@ final class AppModel: ObservableObject {
     @Published var hasTOTP = false
     @Published var snxInstalled = false
     @Published var proxyNodes: [ProxySubscription.Node] = []
+    @Published var proxyDelays: [String: Int] = [:]
     @Published var proxyRunning = false
     @Published var proxyNow: String?
     @Published var proxyDelayMs: Int?
+    private var lastProxyDelayProbeAt: Date?
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -74,6 +76,11 @@ final class AppModel: ObservableObject {
 
     var parsedSplitDestinations: SplitDestinations.Parsed {
         SplitDestinations.parse(splitDestinations)
+    }
+
+    /// Node picker order: lowest measured ping first.
+    var sortedProxyNodes: [ProxySubscription.Node] {
+        ProxySubscription.sortedByDelay(proxyNodes, delays: proxyDelays)
     }
 
     init() {
@@ -320,10 +327,24 @@ final class AppModel: ObservableObject {
             }
             let running = ProxyClient.isRunning()
             let proxyInfo = running ? ProxyClient.proxyStatus() : (nil, nil)
+            let delays = running ? ProxyClient.allProxyDelays() : [:]
             await MainActor.run {
+                let wasRunning = self.proxyRunning
                 self.proxyRunning = running
                 self.proxyNow = proxyInfo.0
                 self.proxyDelayMs = proxyInfo.1
+                if running {
+                    if !delays.isEmpty {
+                        self.proxyDelays = delays
+                    }
+                    let due = self.lastProxyDelayProbeAt.map { Date().timeIntervalSince($0) > 180 } ?? true
+                    if !wasRunning || due {
+                        self.lastProxyDelayProbeAt = Date()
+                        ProxyClient.probeURLTestDelays()
+                    }
+                } else if wasRunning {
+                    self.lastProxyDelayProbeAt = nil
+                }
                 switch snx {
                 case .success(let new):
                     if new != self.snxStatus {

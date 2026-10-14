@@ -136,4 +136,14 @@ final class TOTPTests: XCTestCase {
         XCTAssertTrue(tags.contains(ProxySubscription.selectorTag))
         XCTAssertTrue(tags.contains("direct"))
     }
+
+    func testSortedProxyNodesByDelay() {
+        let nodes = [
+            ProxySubscription.Node(tag: "slow", title: "Slow", server: "a", proto: "ss"),
+            ProxySubscription.Node(tag: "fast", title: "Fast", server: "b", proto: "ss"),
+            ProxySubscription.Node(tag: "unknown", title: "Unknown", server: "c", proto: "ss"),
+        ]
+        let sorted = ProxySubscription.sortedByDelay(nodes, delays: ["slow": 200, "fast": 40])
+        XCTAssertEqual(sorted.map(\.tag), ["fast", "slow", "unknown"])
+    }
 }

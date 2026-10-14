@@ -310,8 +310,12 @@ struct SettingsView: View {
         stacked("Node") {
             Picker("Node", selection: $model.proxyNodeTag) {
                 Text("Auto (urltest)").tag(ProxySubscription.autoTag)
-                ForEach(model.proxyNodes) { node in
-                    Text(node.title).tag(node.tag)
+                ForEach(model.sortedProxyNodes) { node in
+                    if let ms = model.proxyDelays[node.tag] {
+                        Text("\(node.title) · \(ms) ms").tag(node.tag)
+                    } else {
+                        Text(node.title).tag(node.tag)
+                    }
                 }
             }
             .labelsHidden()

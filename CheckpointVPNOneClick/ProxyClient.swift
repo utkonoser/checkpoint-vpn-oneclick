@@ -200,6 +200,51 @@ enum ProxyClient {
         return (now, delay)
     }
 
+    /// Last measured delay (ms) per outbound tag from Clash API history.
+    static func allProxyDelays() -> [String: Int] {
+        var req = URLRequest(
+            url: URL(string: "http://127.0.0.1:\(ProxySubscription.clashAPIPort)/proxies")!
+        )
+        req.setValue("Bearer \(ProxySubscription.clashAPISecret)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 2
+        let sem = DispatchSemaphore(value: 0)
+        var out: [String: Int] = [:]
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            defer { sem.signal() }
+            guard let data,
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let proxies = root["proxies"] as? [String: Any]
+            else { return }
+            for (tag, value) in proxies {
+                guard let obj = value as? [String: Any],
+                      let hist = obj["history"] as? [[String: Any]],
+                      let last = hist.last,
+                      let delay = last["delay"] as? Int,
+                      delay > 0
+                else { continue }
+                out[tag] = delay
+            }
+        }.resume()
+        _ = sem.wait(timeout: .now() + 2)
+        return out
+    }
+
+    /// Kick urltest so node delays fill in; fire-and-forget.
+    static func probeURLTestDelays() {
+        var comps = URLComponents(
+            string: "http://127.0.0.1:\(ProxySubscription.clashAPIPort)/proxies/\(ProxySubscription.autoTag)/delay"
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "timeout", value: "3000"),
+            URLQueryItem(name: "url", value: "https://www.gstatic.com/generate_204"),
+        ]
+        guard let url = comps.url else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(ProxySubscription.clashAPISecret)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 60
+        URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
+    }
+
     static func isRunning() -> Bool {
         let byName = run(executable: "/usr/bin/pgrep", arguments: ["-x", "sing-box"], timeout: 2)
         return byName.status == 0

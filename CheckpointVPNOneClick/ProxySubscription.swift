@@ -178,6 +178,25 @@ enum ProxySubscription {
         return nodes
     }
 
+    /// Lowest ping first; unknown delay sinks to the bottom (then by title).
+    static func sortedByDelay(_ nodes: [Node], delays: [String: Int]) -> [Node] {
+        nodes.sorted { a, b in
+            let da = delays[a.tag]
+            let db = delays[b.tag]
+            switch (da, db) {
+            case let (x?, y?):
+                if x != y { return x < y }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        }
+    }
+
     /// Unique server hosts for Check Point ignore-routes (resolved by caller).
     static func serverHosts(in nodes: [Node]) -> [String] {
         var seen = Set<String>()
