@@ -1,1 +1,0 @@
--keep class com.checkpoint.vpn.oneclick.vpn.NativeEngine { *; }

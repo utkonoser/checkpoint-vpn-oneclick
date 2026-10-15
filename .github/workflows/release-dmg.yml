@@ -38,53 +38,9 @@ jobs:
           path: build/CheckpointVPNOneClick-*.dmg
           if-no-files-found: error
 
-  apk:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,x86_64-linux-android
-
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked --version 3.5.4
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install SDK packages
-        run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-
-      - name: Assemble release APK
-        working-directory: android
-        run: |
-          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/27.2.12479018"
-          test -d "$ANDROID_NDK_HOME"
-          chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk \
-            "app/build/outputs/apk/release/CheckpointVPNOneClick-${{ inputs.tag }}.apk"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: android/app/build/outputs/apk/release/CheckpointVPNOneClick-*.apk
-          if-no-files-found: error
-
   release:
     name: Publish GitHub release
-    needs: [dmg, apk]
+    needs: [dmg]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,21 +58,20 @@ jobs:
           set -euo pipefail
           tag="${{ inputs.tag }}"
           shopt -s nullglob
-          mapfile -t assets < <(find dist -type f \( -name 'CheckpointVPNOneClick-*.dmg' -o -name 'CheckpointVPNOneClick-*.apk' \) | sort)
+          mapfile -t assets < <(find dist -type f -name 'CheckpointVPNOneClick-*.dmg' | sort)
           printf 'Release assets:\n'
           printf '  %s\n' "${assets[@]}"
-          if [ "${#assets[@]}" -lt 2 ]; then
-            echo "Expected DMG + APK under dist/" >&2
+          if [ "${#assets[@]}" -lt 1 ]; then
+            echo "Expected DMG under dist/" >&2
             find dist -type f >&2 || true
             exit 1
           fi
-          notes="macOS DMG (ad-hoc signed, macOS 14+) with embedded CheckpointVPNTunnel helper, plus Android sideload APK (VpnService + snxcore JNI).
+          notes="macOS DMG (ad-hoc signed, macOS 14+) with embedded CheckpointVPNTunnel helper.
 
-          - First macOS launch: right-click → Open. Admin password only when a helper is missing or broken.
+          - First launch: right-click → Open. Admin password only when a helper is missing or broken.
           - Work VPN: split tunnel and exclude lists. Empty split list keeps gateway Office Mode.
-          - Personal proxy (macOS): independent sing-box subscription, include and exclude lists, node list sorted by ping.
-          - Android: adb install the APK; grant VPN permission on first Connect.
-          - AGPL tunnel engine source: Vendor/snx-rs (+ android/engine for the JNI bridge). sing-box is GPL-3 (see THIRD_PARTY.md)."
+          - Personal proxy: independent sing-box subscription, include and exclude lists, node list sorted by ping.
+          - AGPL tunnel engine source: Vendor/snx-rs. sing-box is GPL-3 (see THIRD_PARTY.md)."
           gh release create "$tag" "${assets[@]}" \
             --title "Checkpoint VPN One-Click $tag" \
             --notes "$notes" \

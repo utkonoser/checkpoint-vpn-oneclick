@@ -1,17 +1,15 @@
 # Checkpoint VPN One-Click
 
-Clients for **Check Point** remote access on **macOS** and **Android**. Both use a vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork (`snxcore`) and connect with a saved password + live TOTP — no official Check Point UI.
+macOS menu-bar client for **Check Point** remote access. Uses a vendored [snx-rs](https://github.com/ancwrd1/snx-rs) AGPL fork (`snxcore`) and connects with a saved password + live TOTP — no official Check Point UI.
 
 **Split-tunnel by default** (`default-route=false`): the VPN does not take the whole internet. Optionally list **CIDRs / IPs / hostnames** so only those destinations go through the tunnel.
 
-| Platform | UI | Tunnel |
-|----------|----|--------|
-| macOS | Menu bar Swift app | Root helper + utun (`CheckpointVPNTunnel`) |
-| Android | Jetpack Compose | `VpnService` + `libcheckpoint_engine.so` (JNI → snxcore) |
+| Piece | Role |
+|-------|------|
+| Menu bar Swift app | UI, secrets, TOTP |
+| Root helper + utun | `CheckpointVPNTunnel` |
 
 Not affiliated with Check Point.
-
-See [android/README.md](android/README.md) for Android build / sideload.
 
 ## Features
 
@@ -20,7 +18,7 @@ See [android/README.md](android/README.md) for Android build / sideload.
 - **Connections**: each VPN is its own row (renameable, green/red status). **Add** a Check Point gateway or a subscription proxy
 - **Split tunnel**: optional CIDR / IP / hostname list → `no-routing` + `add-routes` (hostnames resolve at Connect)
 - **Exclude**: destinations kept off that tunnel. Work VPN uses `ignore-routes`; the personal proxy drops the same entries from its include routes
-- **Personal proxy (macOS)**: optional embedded sing-box, started and stopped on its own. Subscription URL, include-only routes, exclude list, Auto or a named node (list sorted by ping)
+- **Personal proxy**: optional embedded sing-box, started and stopped on its own. Subscription URL, include-only routes, exclude list, Auto or a named node (list sorted by ping)
 - **Gateway routes** when the work list is empty (Office Mode from the gateway, still no default route)
 - **Per-site secrets**: password + TOTP (Base32, `otpauth://`, or QR)
 - **Live TOTP** in Settings
@@ -63,7 +61,7 @@ xattr -dr com.apple.quarantine /Applications/CheckpointVPNOneClick.app
 
 5. **Connect** from the menu bar or Settings (helper install runs automatically when needed).
 
-Personal proxy (macOS only): expand that connection, set a subscription URL, then **Include** / **Exclude** the same way (one host, IP, or CIDR per line). **Connect** starts sing-box and routes only the include list. Pick **Auto** or a node; after connect the list sorts by lowest ping.
+Personal proxy: expand that connection, set a subscription URL, then **Include** / **Exclude** the same way (one host, IP, or CIDR per line). **Connect** starts sing-box and routes only the include list. Pick **Auto** or a node; after connect the list sorts by lowest ping.
 
 Discover login types after the helper is installed:
 
@@ -125,18 +123,7 @@ make generate  # xcodegen → .xcodeproj
 make dmg       # local DMG under build/
 ```
 
-GitHub release (DMG + APK): push a tag, then **Actions → Release → Run workflow** with that tag. Builds macOS DMG and Android APK and attaches both to the release.
-
-### Android APK (local)
-
-```bash
-make apk
-# → build/CheckpointVPNOneClick.apk
-```
-
-Needs JDK 17+, Android SDK/NDK, Rust + `cargo-ndk` (Gradle `preBuild` compiles `libcheckpoint_engine.so`).
-
-PR CI for Android only: **Actions → Android** (`.github/workflows/android.yml`).
+GitHub release: push a tag, then **Actions → Release → Run workflow** with that tag. Builds the macOS DMG and attaches it to the release.
 
 ### After sleep / helper issues
 

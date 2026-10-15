@@ -1,4 +1,4 @@
-.PHONY: generate build test install dmg apk clean forget-extra-apps helper proxy
+.PHONY: generate build test install dmg clean forget-extra-apps helper proxy
 
 XCODEBUILD = xcodebuild \
 	-project CheckpointVPNOneClick.xcodeproj \
@@ -36,10 +36,6 @@ install: helper proxy
 dmg: generate helper proxy
 	./Scripts/package-dmg.sh
 
-# Android release APK → build/CheckpointVPNOneClick.apk
-apk:
-	./Scripts/build-android-apk.sh
-
 clean:
 	rm -rf build TunnelHelper/dist ProxyHelper/dist
-	rm -rf Vendor/snx-rs/target android/app/build android/engine/target
+	rm -rf Vendor/snx-rs/target
