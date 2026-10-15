@@ -17,10 +17,14 @@ final class AppModel: ObservableObject {
     @AppStorage("workConnectionName") var workConnectionName: String = "Check Point"
     @AppStorage("proxyConnectionName") var proxyConnectionName: String = "Personal proxy"
     @AppStorage("proxySubscriptionURL") var proxySubscriptionURL: String = ProxySubscription.defaultURL
+    /// `ProxySubscription.sourceURL` or `sourcePaste`.
+    @AppStorage("proxySource") var proxySource: String = ProxySubscription.sourceURL
     @AppStorage("proxyInclude") var proxyInclude: String = ""
     /// One CIDR/IP/hostname per line — stay off the personal proxy even if listed in include.
     @AppStorage("proxyExclude") var proxyExclude: String = ""
     @AppStorage("proxyNodeTag") var proxyNodeTag: String = ProxySubscription.autoTag
+    /// Share-link paste body (persisted to Application Support, not AppStorage).
+    @Published var proxyPasteText: String = ProxySubscription.loadPaste()
 
     var displayWorkName: String {
         let n = workConnectionName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -216,8 +220,29 @@ final class AppModel: ObservableObject {
         !isBusy && snxInstalled && vpnState == .connected
     }
 
+    var hasProxyConfig: Bool {
+        if proxySource == ProxySubscription.sourcePaste {
+            return !proxyPasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !proxySubscriptionURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var canConnectProxy: Bool {
-        !isBusy && ProxyClient.bundledPayloadURL() != nil && !proxyRunning
+        !isBusy && ProxyClient.bundledPayloadURL() != nil && !proxyRunning && hasProxyConfig
+    }
+
+    func persistProxyPaste() {
+        try? ProxySubscription.savePaste(proxyPasteText)
+    }
+
+    func clearProxyConfig() {
+        proxySubscriptionURL = ""
+        proxySource = ProxySubscription.sourceURL
+        proxyInclude = ""
+        proxyExclude = ""
+        proxyPasteText = ""
+        ProxySubscription.clearPaste()
+        proxyNodes = []
     }
 
     var canDisconnectProxy: Bool {
@@ -436,6 +461,8 @@ final class AppModel: ObservableObject {
         guard canConnectProxy else { return }
         isBusy = true
         lastError = nil
+        persistProxyPaste()
+        let source = proxySource
         let url = proxySubscriptionURL
         let include = proxyInclude
         let exclude = proxyExclude
@@ -443,6 +470,7 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 let selected = try await ConnectEngine.connectProxy(
+                    source: source,
                     subscriptionURL: url,
                     includeDestinations: include,
                     excludeDestinations: exclude,
@@ -498,11 +526,13 @@ final class AppModel: ObservableObject {
         guard !isBusy else { return }
         isBusy = true
         lastError = nil
+        persistProxyPaste()
+        let source = proxySource
         let url = proxySubscriptionURL
         let tag = proxyNodeTag
         Task.detached {
             do {
-                let text = try ProxySubscription.fetch(urlString: url)
+                let text = try ProxySubscription.loadText(source: source, url: url)
                 let parsed = ProxySubscription.parse(text)
                 guard !parsed.nodes.isEmpty else { throw ProxySubscription.Error.empty }
                 var selected = tag

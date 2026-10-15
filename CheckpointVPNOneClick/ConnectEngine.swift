@@ -126,6 +126,7 @@ enum ConnectEngine {
     // MARK: - Personal proxy (sing-box)
 
     static func connectProxy(
+        source: String,
         subscriptionURL: String,
         includeDestinations: String,
         excludeDestinations: String = "",
@@ -134,7 +135,7 @@ enum ConnectEngine {
         if ProxyClient.isRunning() {
             throw Error.proxyAlreadyRunning
         }
-        let text = try ProxySubscription.fetch(urlString: subscriptionURL)
+        let text = try ProxySubscription.loadText(source: source, url: subscriptionURL)
         let parsed = ProxySubscription.parse(text)
         guard !parsed.nodes.isEmpty else { throw ProxySubscription.Error.empty }
         var selected = nodeTag

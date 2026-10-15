@@ -4,6 +4,8 @@ import Foundation
 enum ProxySubscription {
     static let defaultURL =
         "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt"
+    static let sourceURL = "url"
+    static let sourcePaste = "paste"
     static let autoTag = "auto"
     static let selectorTag = "proxy"
     static let clashAPIPort = 9097
@@ -27,7 +29,7 @@ enum ProxySubscription {
         }
     }
 
-    enum Error: Swift.Error, LocalizedError {
+    enum Error: Swift.Error, LocalizedError, Equatable {
         case empty
         case fetch(String)
         case encode
@@ -58,6 +60,41 @@ enum ProxySubscription {
 
     static func configURL() throws -> URL {
         try supportDir().appendingPathComponent("sing-box.json")
+    }
+
+    static func pasteURL() throws -> URL {
+        try supportDir().appendingPathComponent("proxy-subscription.txt")
+    }
+
+    static func loadPaste() -> String {
+        guard let url = try? pasteURL(),
+              let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8)
+        else { return "" }
+        return text
+    }
+
+    static func savePaste(_ text: String) throws {
+        let url = try pasteURL()
+        try Data(text.utf8).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    static func clearPaste() {
+        guard let url = try? pasteURL() else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Resolve subscription body from URL fetch or saved paste (`source` is `url` / `paste`).
+    static func loadText(source: String, url: String) throws -> String {
+        if source == sourcePaste {
+            let text = loadPaste()
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw Error.empty
+            }
+            return text
+        }
+        return try fetch(urlString: url)
     }
 
     static func fetch(urlString: String) throws -> String {

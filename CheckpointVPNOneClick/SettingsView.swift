@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var newGateway = ""
     @State private var newProxyName = "Personal proxy"
     @State private var newProxyURL = ProxySubscription.defaultURL
+    @State private var newProxySource = ProxySubscription.sourceURL
+    @State private var newProxyPaste = ""
     @State private var proxyConfigured = true
 
     private enum AddConnectionKind: String, CaseIterable, Identifiable {
@@ -60,6 +62,8 @@ struct SettingsView: View {
                         newGateway = ""
                         newProxyName = model.displayProxyName
                         newProxyURL = ProxySubscription.defaultURL
+                        newProxySource = ProxySubscription.sourceURL
+                        newProxyPaste = ""
                         showAddSheet = true
                     } label: {
                         Label("Add", systemImage: "plus.circle.fill")
@@ -106,7 +110,8 @@ struct SettingsView: View {
         .onAppear {
             model.refreshStatus()
             model.refreshSecrets()
-            proxyConfigured = !model.proxySubscriptionURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            model.proxyPasteText = ProxySubscription.loadPaste()
+            proxyConfigured = model.hasProxyConfig
             AppWindows.bringSettingsForward()
         }
         .fileImporter(isPresented: $importingQR, allowedContentTypes: [.image], allowsMultipleSelection: false) { result in
@@ -294,11 +299,34 @@ struct SettingsView: View {
                 .labelsHidden()
         }
 
-        stacked("Subscription URL") {
-            TextField("https://…", text: $model.proxySubscriptionURL)
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-                .font(.system(.caption, design: .monospaced))
+        stacked("Source") {
+            Picker("Source", selection: $model.proxySource) {
+                Text("URL").tag(ProxySubscription.sourceURL)
+                Text("Paste").tag(ProxySubscription.sourcePaste)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+
+        if model.proxySource == ProxySubscription.sourcePaste {
+            stacked("Share links") {
+                TextEditor(text: $model.proxyPasteText)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(minHeight: 88, maxHeight: 140)
+                    .onChange(of: model.proxyPasteText) { _, _ in
+                        model.persistProxyPaste()
+                    }
+            }
+            Text("One link per line: ss://, vmess://, trojan://, hysteria2://")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else {
+            stacked("Subscription URL") {
+                TextField("https://…", text: $model.proxySubscriptionURL)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .font(.system(.caption, design: .monospaced))
+            }
         }
 
         stacked("Include (proxy only)") {
@@ -331,8 +359,10 @@ struct SettingsView: View {
         }
 
         HStack(spacing: 12) {
-            Button("Refresh subscription") { model.refreshProxySubscription() }
-                .disabled(model.isBusy)
+            Button(model.proxySource == ProxySubscription.sourcePaste ? "Parse links" : "Refresh subscription") {
+                model.refreshProxySubscription()
+            }
+            .disabled(model.isBusy || !model.hasProxyConfig)
             if model.proxyRunning {
                 Button("Disconnect") { model.disconnectProxy() }
                     .disabled(!model.canDisconnectProxy)
@@ -346,9 +376,7 @@ struct SettingsView: View {
 
         Button("Remove connection", role: .destructive) {
             if model.proxyRunning { model.disconnectProxy() }
-            model.proxySubscriptionURL = ""
-            model.proxyInclude = ""
-            model.proxyExclude = ""
+            model.clearProxyConfig()
             proxyConfigured = false
             proxyExpanded = false
         }
@@ -381,12 +409,38 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 TextField("Personal proxy", text: $newProxyName)
                     .textFieldStyle(.roundedBorder)
-                Text("Subscription URL")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                TextField("https://…", text: $newProxyURL)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.caption, design: .monospaced))
+
+                Picker("Source", selection: $newProxySource) {
+                    Text("URL").tag(ProxySubscription.sourceURL)
+                    Text("Paste").tag(ProxySubscription.sourcePaste)
+                }
+                .pickerStyle(.segmented)
+
+                if newProxySource == ProxySubscription.sourcePaste {
+                    Text("Share links (one per line)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $newProxyPaste)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(minHeight: 100, maxHeight: 140)
+                        .overlay(alignment: .topLeading) {
+                            if newProxyPaste.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("ss://…\nvmess://…")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 5)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                } else {
+                    Text("Subscription URL")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TextField("https://…", text: $newProxyURL)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+                }
             }
 
             Spacer()
@@ -401,7 +455,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 420, height: 280)
+        .frame(width: 420, height: addKind == .other && newProxySource == ProxySubscription.sourcePaste ? 420 : 300)
     }
 
     private var canCommitAdd: Bool {
@@ -409,6 +463,9 @@ struct SettingsView: View {
         case .checkpoint:
             return !newGateway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .other:
+            if newProxySource == ProxySubscription.sourcePaste {
+                return !newProxyPaste.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
             return !newProxyURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
@@ -424,12 +481,20 @@ struct SettingsView: View {
             saveMessage = nil
             workExpanded = true
         case .other:
-            let url = newProxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !url.isEmpty else { return }
             let name = newProxyName.trimmingCharacters(in: .whitespacesAndNewlines)
-            model.proxySubscriptionURL = url
             if !name.isEmpty {
                 model.proxyConnectionName = name
+            }
+            model.proxySource = newProxySource
+            if newProxySource == ProxySubscription.sourcePaste {
+                let paste = newProxyPaste.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !paste.isEmpty else { return }
+                model.proxyPasteText = newProxyPaste
+                model.persistProxyPaste()
+            } else {
+                let url = newProxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !url.isEmpty else { return }
+                model.proxySubscriptionURL = url
             }
             proxyConfigured = true
             proxyExpanded = true

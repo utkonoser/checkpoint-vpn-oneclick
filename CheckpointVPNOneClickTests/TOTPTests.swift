@@ -137,6 +137,39 @@ final class TOTPTests: XCTestCase {
         XCTAssertTrue(tags.contains("direct"))
     }
 
+    func testParseProxySubscriptionMultilinePaste() {
+        let text = """
+        # mixed paste
+        ss://YWVzLTI1Ni1nY206cGFzcw@ss.example.com:8388#SS-Node
+        hysteria2://408c51e8-9246-483d-ba73-34ab4e202eb9@hy2.example.com:443?sni=hy2.example.com#HY2
+        not-a-uri
+        """
+        let parsed = ProxySubscription.parse(text)
+        XCTAssertEqual(parsed.nodes.count, 2)
+        XCTAssertEqual(Set(parsed.nodes.map(\.proto)), Set(["ss", "hysteria2"]))
+        XCTAssertEqual(Set(parsed.nodes.map(\.server)), Set(["ss.example.com", "hy2.example.com"]))
+    }
+
+    func testLoadTextPasteEmptyThrows() {
+        ProxySubscription.clearPaste()
+        XCTAssertThrowsError(
+            try ProxySubscription.loadText(source: ProxySubscription.sourcePaste, url: "")
+        ) { error in
+            XCTAssertEqual(error as? ProxySubscription.Error, .empty)
+        }
+    }
+
+    func testLoadTextPasteRoundTrip() throws {
+        let body = "ss://YWVzLTI1Ni1nY206cGFzcw@paste.example.com:8388#Paste"
+        try ProxySubscription.savePaste(body)
+        defer { ProxySubscription.clearPaste() }
+        let text = try ProxySubscription.loadText(source: ProxySubscription.sourcePaste, url: "")
+        XCTAssertEqual(text, body)
+        let parsed = ProxySubscription.parse(text)
+        XCTAssertEqual(parsed.nodes.count, 1)
+        XCTAssertEqual(parsed.nodes[0].server, "paste.example.com")
+    }
+
     func testSortedProxyNodesByDelay() {
         let nodes = [
             ProxySubscription.Node(tag: "slow", title: "Slow", server: "a", proto: "ss"),
