@@ -150,6 +150,40 @@ final class TOTPTests: XCTestCase {
         XCTAssertEqual(Set(parsed.nodes.map(\.server)), Set(["ss.example.com", "hy2.example.com"]))
     }
 
+    func testParseProxySubscriptionVlessRealityGrpc() throws {
+        let text = """
+        vless://11111111-2222-4333-8444-555555555555@vless.example.com:443?type=grpc&security=reality&encryption=none&sni=cdn.example.com&fp=firefox&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=0123456789abcdef&alpn=h2&serviceName=grpc-svc#grpc-node
+        """
+        let parsed = ProxySubscription.parse(text)
+        XCTAssertEqual(parsed.nodes.count, 1)
+        XCTAssertEqual(parsed.nodes[0].proto, "vless")
+        XCTAssertEqual(parsed.nodes[0].server, "vless.example.com")
+        XCTAssertEqual(parsed.nodes[0].title, "grpc-node")
+
+        let ob = parsed.outbounds[0]
+        XCTAssertEqual(ob["type"] as? String, "vless")
+        XCTAssertEqual(ob["uuid"] as? String, "11111111-2222-4333-8444-555555555555")
+        XCTAssertEqual(ob["server_port"] as? Int, 443)
+
+        let tls = ob["tls"] as? [String: Any]
+        XCTAssertEqual(tls?["enabled"] as? Bool, true)
+        XCTAssertEqual(tls?["server_name"] as? String, "cdn.example.com")
+        XCTAssertEqual(tls?["alpn"] as? [String], ["h2"])
+        let utls = tls?["utls"] as? [String: Any]
+        XCTAssertEqual(utls?["fingerprint"] as? String, "firefox")
+        let reality = tls?["reality"] as? [String: Any]
+        XCTAssertEqual(reality?["enabled"] as? Bool, true)
+        XCTAssertEqual(reality?["public_key"] as? String, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        XCTAssertEqual(reality?["short_id"] as? String, "0123456789abcdef")
+
+        let transport = ob["transport"] as? [String: Any]
+        XCTAssertEqual(transport?["type"] as? String, "grpc")
+        XCTAssertEqual(transport?["service_name"] as? String, "grpc-svc")
+
+        let data = try ProxySubscription.buildConfig(parsed: parsed, selectedTag: ProxySubscription.autoTag)
+        XCTAssertFalse(data.isEmpty)
+    }
+
     func testLoadTextPasteEmptyThrows() {
         ProxySubscription.clearPaste()
         XCTAssertThrowsError(

@@ -317,7 +317,7 @@ struct SettingsView: View {
                         model.persistProxyPaste()
                     }
             }
-            Text("One link per line: ss://, vmess://, trojan://, hysteria2://")
+            Text("One link per line: ss://, vmess://, vless://, trojan://, hysteria2://")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         } else {
@@ -425,7 +425,7 @@ struct SettingsView: View {
                         .frame(minHeight: 100, maxHeight: 140)
                         .overlay(alignment: .topLeading) {
                             if newProxyPaste.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("ss://…\nvmess://…")
+                                Text("ss://…\nvless://…")
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(.tertiary)
                                     .padding(.top, 8)

@@ -262,6 +262,9 @@ enum ProxySubscription {
         if lower.hasPrefix("vmess://") {
             return parseVmess(line, usedTags: &usedTags)
         }
+        if lower.hasPrefix("vless://") {
+            return parseVless(line, usedTags: &usedTags)
+        }
         return nil
     }
 
@@ -445,6 +448,91 @@ enum ProxySubscription {
             outbound["transport"] = ws
         }
         return (Node(tag: tag, title: title, server: host, proto: "vmess"), outbound)
+    }
+
+    /// vless://uuid@host:port?type=…&security=…&sni=…&fp=…&pbk=…&sid=…&serviceName=…#name
+    private static func parseVless(_ line: String, usedTags: inout Set<String>) -> (Node, [String: Any])? {
+        guard let url = URL(string: line),
+              let host = url.host, !host.isEmpty,
+              let port = url.port ?? Optional(443)
+        else { return nil }
+        let uuid = url.user?.removingPercentEncoding ?? url.user ?? ""
+        guard !uuid.isEmpty else { return nil }
+        let title = fragmentTitle(from: url, fallback: "\(host):\(port)")
+        let tag = uniqueTag(title, usedTags: &usedTags)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func q(_ name: String) -> String? {
+            items.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.value
+        }
+
+        var outbound: [String: Any] = [
+            "type": "vless",
+            "tag": tag,
+            "server": host,
+            "server_port": port,
+            "uuid": uuid,
+        ]
+        if let flow = q("flow"), !flow.isEmpty {
+            outbound["flow"] = flow
+        }
+        if let enc = q("packetEncoding") ?? q("packet_encoding"), !enc.isEmpty {
+            outbound["packet_encoding"] = enc
+        }
+
+        let security = (q("security") ?? "none").lowercased()
+        if security == "tls" || security == "reality" {
+            let sni = q("sni") ?? q("peer") ?? host
+            var tls: [String: Any] = [
+                "enabled": true,
+                "server_name": sni,
+                "insecure": q("allowInsecure") == "1" || q("insecure") == "1",
+            ]
+            if let alpn = q("alpn"), !alpn.isEmpty {
+                tls["alpn"] = alpn.split(separator: ",").map(String.init)
+            }
+            if let fp = q("fp") ?? q("fingerprint"), !fp.isEmpty {
+                tls["utls"] = ["enabled": true, "fingerprint": fp]
+            }
+            if security == "reality" {
+                var reality: [String: Any] = ["enabled": true]
+                if let pbk = q("pbk") ?? q("publicKey") ?? q("public_key"), !pbk.isEmpty {
+                    reality["public_key"] = pbk
+                }
+                if let sid = q("sid") ?? q("shortId") ?? q("short_id") {
+                    reality["short_id"] = sid
+                }
+                tls["reality"] = reality
+            }
+            outbound["tls"] = tls
+        }
+
+        let net = (q("type") ?? q("network") ?? "tcp").lowercased()
+        switch net {
+        case "ws", "websocket":
+            var ws: [String: Any] = ["type": "ws"]
+            if let path = q("path"), !path.isEmpty { ws["path"] = path }
+            if let hostHeader = q("host"), !hostHeader.isEmpty {
+                ws["headers"] = ["Host": hostHeader]
+            }
+            outbound["transport"] = ws
+        case "grpc":
+            var grpc: [String: Any] = ["type": "grpc"]
+            if let name = q("serviceName") ?? q("service_name"), !name.isEmpty {
+                grpc["service_name"] = name
+            }
+            outbound["transport"] = grpc
+        case "http", "h2", "httpupgrade":
+            var http: [String: Any] = ["type": net == "httpupgrade" ? "httpupgrade" : "http"]
+            if let path = q("path"), !path.isEmpty { http["path"] = path }
+            if let hostHeader = q("host"), !hostHeader.isEmpty {
+                http["host"] = [hostHeader]
+            }
+            outbound["transport"] = http
+        default:
+            break
+        }
+
+        return (Node(tag: tag, title: title, server: host, proto: "vless"), outbound)
     }
 
     private static func padBase64(_ value: String) -> String {
